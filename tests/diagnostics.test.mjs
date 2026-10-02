@@ -5,6 +5,7 @@ test('诊断脱敏保留错误堆栈与文件系统错误字段', () => {
   const secret = 'a'.repeat(64);
   const text = scrub(`Bearer hello http://local/?token=hello#pair=123456 privateKey=${secret}`);
   for (const value of ['hello', '123456', secret]) assert.ok(!text.includes(value));
+  assert.ok(!scrub('{"token":"json-secret","privateKey": "key-secret"}').includes('secret'));
   const error = Object.assign(new Error('EPERM: C:\\cache'), {
     code: 'EPERM',
     syscall: 'unlink',

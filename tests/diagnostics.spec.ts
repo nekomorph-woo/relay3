@@ -54,6 +54,7 @@ test('统一异常采集、崩溃记录、脱敏导出与确认清理', async ()
     await page.getByRole('button', { name: '设置', exact: true }).click();
     await page.locator('summary').filter({ hasText: '诊断日志' }).click();
     await expect(page.getByRole('button', { name: '导出诊断日志' })).toBeVisible();
+    await page.getByRole('button', { name: '导出诊断日志' }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/v036-diagnostics-settings.png' });
     const archive = path.join(dir, 'diagnostics.zip');
     await app.evaluate(({ dialog }, filename) => {
@@ -84,6 +85,35 @@ test('统一异常采集、崩溃记录、脱敏导出与确认清理', async ()
   } finally {
     await app.close();
     expect(existsSync(path.join(dir, 'logs', 'active-session.json'))).toBeFalsy();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('主进程未捕获异常同步落盘并保留非正常退出标记', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'relay3-fatal-'));
+  const app = await _electron.launch({
+    ...(process.env.RELAY3_PACKAGED_PATH
+      ? { executablePath: process.env.RELAY3_PACKAGED_PATH, args: [] }
+      : { args: ['.'] }),
+    cwd: process.cwd(),
+    env: { ...process.env, RELAY3_DATA_DIR: dir },
+  });
+  try {
+    await app.firstWindow();
+    const closed = app.waitForEvent('close');
+    await app.evaluate(({ dialog }) => {
+      dialog.showErrorBox = () => {};
+      setTimeout(() => {
+        throw new Error('diagnostic-main-fatal');
+      }, 50);
+    });
+    await closed;
+    const text = readFileSync(path.join(dir, 'logs', 'main.log'), 'utf8');
+    expect(text).toContain('main.uncaught-exception');
+    expect(text).toContain('diagnostic-main-fatal');
+    expect(existsSync(path.join(dir, 'logs', 'active-session.json'))).toBeTruthy();
+  } finally {
+    await app.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

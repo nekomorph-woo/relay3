@@ -4,7 +4,7 @@ export function scrub(value: unknown): string {
     .replace(/Bearer\s+[^\s"',;]+/gi, 'Bearer [已隐藏]')
     .replace(/([?#&](?:token|pair|pairingToken|pairingCode|code)=)[^\s&#"']*/gi, '$1[已隐藏]')
     .replace(
-      /((?:privateKey|secretKey|adminToken|pairingToken|pairingCode|token|authorization)\s*[=:]\s*)[^\s,;]+/gi,
+      /(["']?(?:privateKey|secretKey|adminToken|pairingToken|pairingCode|token|authorization)["']?\s*[=:]\s*["']?)[^\s"',;}]+/gi,
       '$1[已隐藏]',
     )
     .replace(/\b[\da-f]{64,}\b/gi, '[已隐藏]')

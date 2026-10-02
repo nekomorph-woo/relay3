@@ -1,3 +1,4 @@
+import { version as appVersion } from '../package.json';
 import { reportException } from './diagnostics';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -683,7 +684,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <span className="version">Relay3 {boot?.version ?? '0.3.5'}</span>
+          <span className="version">Relay3 {boot?.version ?? appVersion}</span>
           <div className="sidebar-utilities">
             <button
               title="关于 Relay3"
@@ -1809,7 +1810,7 @@ export default function App() {
           <div className="about-content">
             <img src="/relay3.png" alt="Relay3" />
             <h2>Relay3</h2>
-            <p>版本 {boot?.version ?? '0.3.5'}</p>
+            <p>版本 {boot?.version ?? appVersion}</p>
             <p>PC、Mac 与手机之间的局域网文件互传与文字群聊。</p>
             <a
               href="https://github.com/nekomorph-woo/relay3"
