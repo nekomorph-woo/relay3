@@ -20,10 +20,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const appIconPath = path.join(
-  dirname,
-  process.platform === 'darwin' ? '../dist/relay3-mac.png' : '../dist/relay3.png',
-);
+const appIconPath = path.join(dirname, '../dist/relay3-desktop.png');
 app.setName('relay3');
 if (process.env.RELAY3_DATA_DIR) app.setPath('userData', process.env.RELAY3_DATA_DIR);
 let service: RelayService;
