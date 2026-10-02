@@ -1,6 +1,6 @@
 {
   "name": "relay3",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "PC、Mac 与手机之间的局域网文件互传工具",
   "author": "relay3",
@@ -14,10 +14,10 @@
     "serve": "npm run build && node dist-electron/index.js",
     "test": "npm run build:backend && node --test tests/*.test.mjs",
     "test:ui": "playwright test",
-    "pack": "npm run build && node scripts/icons.mjs && electron-builder --dir",
-    "dist:mac": "npm run build && node scripts/icons.mjs && electron-builder --mac --arm64 && codesign --verify --deep --strict --verbose=2 release/mac-arm64/relay3.app",
-    "dist:win": "npm run build && node scripts/icons.mjs && electron-builder --win --x64",
-    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64 && codesign --verify --deep --strict --verbose=2 release/mac/relay3.app",
+    "pack": "node scripts/icons.mjs && npm run build && electron-builder --dir",
+    "dist:mac": "node scripts/icons.mjs && npm run build && electron-builder --mac --arm64 && codesign --verify --deep --strict --verbose=2 release/mac-arm64/relay3.app",
+    "dist:win": "node scripts/icons.mjs && npm run build && electron-builder --win --x64",
+    "dist:mac:x64": "node scripts/icons.mjs && npm run build && electron-builder --mac --x64 && codesign --verify --deep --strict --verbose=2 release/mac/relay3.app",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

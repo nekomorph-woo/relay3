@@ -620,7 +620,7 @@ export default function App() {
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
             </div>
           </div>
-          <span className="version">relay3 {boot?.version ?? '0.3.2'}</span>
+          <span className="version">relay3 {boot?.version ?? '0.3.3'}</span>
         </div>
       </aside>
       <div className="workspace">

@@ -20,6 +20,10 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+const appIconPath = path.join(
+  dirname,
+  process.platform === 'darwin' ? '../dist/relay3-mac.png' : '../dist/relay3.png',
+);
 app.setName('relay3');
 if (process.env.RELAY3_DATA_DIR) app.setPath('userData', process.env.RELAY3_DATA_DIR);
 let service: RelayService;
@@ -56,7 +60,7 @@ async function createWindow() {
     minHeight: 600,
     title: 'relay3',
     backgroundColor: '#f5f6f7',
-    icon: path.join(dirname, '../dist/relay3.png'),
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -116,10 +120,9 @@ else {
       app.setAboutPanelOptions({
         applicationName: 'relay3',
         applicationVersion: app.getVersion(),
-        iconPath: path.join(dirname, '../dist/relay3.png'),
+        iconPath: appIconPath,
       });
-      if (process.platform === 'darwin')
-        app.dock?.setIcon(nativeImage.createFromPath(path.join(dirname, '../dist/relay3.png')));
+      if (process.platform === 'darwin') app.dock?.setIcon(nativeImage.createFromPath(appIconPath));
       const handler = (name: string, fn: (...args: any[]) => any) =>
         ipcMain.handle(name, (event, ...args) => {
           senderAllowed(event);
