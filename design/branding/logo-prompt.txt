@@ -1,0 +1,3 @@
+工具：内置 image_gen；用途：relay3 专属图标概念稿。
+
+Use case: logo-brand. Asset type: original application icon for relay3, a local network file transfer app connecting PC, Mac and phone. Create one polished square app icon, no presentation sheet. A bold minimal geometric symbol with exactly three interlocking rounded paths suggesting exchange and a subtle numeral 3 through negative space. Flat vector-like crisp shapes, broad strokes and distinctive silhouette legible at 16px. Warm off-white symbol on deep cobalt blue rounded-square tile, generous internal padding. Centered, straight-on, no perspective. Transparent outside the rounded-square tile. No letters, no wordmark, no device illustrations, no gradients, no shadows, no tiny detail, no atom or Electron logo, no watermark.

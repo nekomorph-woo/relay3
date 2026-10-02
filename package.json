@@ -1,0 +1,62 @@
+{
+  "name": "relay3",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PC、Mac 与手机之间的局域网文件互传工具",
+  "author": "relay3",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "npm run build:backend && node scripts/dev.mjs",
+    "build:backend": "tsup server/index.ts electron/main.ts --format esm --out-dir dist-electron --target node24 --external electron --external ws --external fastify --external @fastify/static --external @fastify/cors --external @fastify/websocket && node scripts/preload.mjs",
+    "build": "tsc --noEmit && vite build && npm run build:backend",
+    "start": "electron .",
+    "serve": "npm run build && node dist-electron/index.js",
+    "test": "npm run build:backend && node --test tests/*.test.mjs",
+    "test:ui": "playwright test",
+    "pack": "npm run build && node scripts/icons.mjs && electron-builder --dir",
+    "dist:mac": "npm run build && node scripts/icons.mjs && electron-builder --mac --arm64",
+    "dist:win": "npm run build && node scripts/icons.mjs && electron-builder --win --x64",
+    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^8.3.0",
+    "@fastify/websocket": "^11.2.0",
+    "fastify": "^5.12.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "44.5.1",
+    "electron-builder": "^26.0.12",
+    "lucide-react": "^0.468.0",
+    "png-to-ico": "^3.0.1",
+    "qrcode": "^1.5.4",
+    "@types/qrcode": "^1.5.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sharp": "^0.34.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.0"
+  },
+  "build": {
+    "appId": "app.relay3.desktop",
+    "productName": "relay3",
+    "asar": true,
+    "compression": "maximum",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**/*", "dist-electron/**/*", "package.json", "!**/*.map", "!**/*.md", "!**/test/**", "!**/tests/**", "!**/example/**", "!**/examples/**"],
+    "mac": { "target": ["dmg"], "icon": "build/icon.icns", "category": "public.app-category.utilities", "hardenedRuntime": true },
+    "dmg": { "title": "relay3", "icon": "build/icon.icns" },
+    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
+    "artifactName": "relay3-${version}-${os}-${arch}.${ext}"
+  }
+}
