@@ -198,9 +198,16 @@ export class RelayService {
       sizes: this.store.sizes(),
       devices: this.store.devices().map((d) => {
         const latest = this.store.db
-          .prepare('SELECT MAX(connectedAt) AS time FROM connections WHERE deviceId=?')
-          .get(d.id) as { time: number | null };
-        return { ...d, lastSeen: latest.time ?? d.lastSeen, online: this.clients.has(d.id) };
+          .prepare(
+            'SELECT MAX(connectedAt) AS time, COUNT(*) AS loginCount FROM connections WHERE deviceId=?',
+          )
+          .get(d.id) as { time: number | null; loginCount: number };
+        return {
+          ...d,
+          lastSeen: latest.time ?? d.lastSeen,
+          loginCount: latest.loginCount,
+          online: this.clients.has(d.id),
+        };
       }),
       connections: this.store.connections(),
     };
@@ -468,8 +475,10 @@ export class RelayService {
       let deleted = 0;
       for (const d of this.store.devices()) {
         const latest = this.store.db
-          .prepare('SELECT MAX(connectedAt) AS time FROM connections WHERE deviceId=?')
-          .get(d.id) as { time: number | null };
+          .prepare(
+            'SELECT MAX(connectedAt) AS time, COUNT(*) AS loginCount FROM connections WHERE deviceId=?',
+          )
+          .get(d.id) as { time: number | null; loginCount: number };
         if (!this.clients.has(d.id) && (latest.time ?? d.lastSeen) < before) {
           this.forgetDevice(d.id);
           deleted++;

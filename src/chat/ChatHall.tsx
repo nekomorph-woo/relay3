@@ -438,7 +438,7 @@ export function ChatHall({
             {connected ? '已连接' : '已断开 · 设备信息暂未更新'} ·{' '}
             {devices.filter((d) => d.online).length} 台在线
           </p>
-          <small>文字历史保存在中转站 SQLite 中</small>
+          <small>文字历史保存在中转站</small>
         </section>
         <section className="panel">
           <div className="section-head">

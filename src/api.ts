@@ -37,7 +37,7 @@ export interface AdminState {
   dataDir: string;
   databasePath: string;
   sizes: { database: number; wal: number; shm: number };
-  devices: (Device & { online: boolean })[];
+  devices: (Device & { online: boolean; loginCount: number })[];
   connections: {
     id: number;
     deviceId: string;

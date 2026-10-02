@@ -297,6 +297,8 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
   await expect(desktop.getByRole('status')).toContainText('已清理');
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
   const oldId = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId;
+  await desktop.getByRole('button', { name: '复制设备标识符' }).click();
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(oldId);
   await desktop.getByRole('button', { name: '更换设备身份', exact: true }).click();
   await desktop.getByRole('button', { name: '确认更换', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('设备身份已更换');

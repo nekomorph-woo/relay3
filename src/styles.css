@@ -2795,3 +2795,124 @@ main.native-page {
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
+
+/* 根据实机反馈对齐输入、配对和设备身份。 */
+.chat-main > .chat-composer textarea:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+.chat-main > .chat-composer:focus-within {
+  border-top-color: var(--color-focus);
+}
+.chat-main > .chat-composer .chat-send-row {
+  margin-top: var(--space-sm);
+}
+.chat-remark-input {
+  align-items: start;
+}
+.chat-remark-input label {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--space-sm);
+  margin: 0;
+}
+.chat-remark-input label > select,
+.chat-remark-input label > textarea {
+  margin: 0;
+}
+.native-page .pairing-panel > label,
+.native-page .numeric-pairing,
+.native-page .pairing-link-actions {
+  width: 100%;
+}
+.native-page .numeric-pairing {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.native-page .numeric-pairing .actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.native-page .numeric-pairing .actions .button {
+  width: 100%;
+}
+.native-page .pairing-link-actions {
+  flex-wrap: nowrap;
+}
+.native-page .pairing-link-actions .button:first-child {
+  flex: 1;
+}
+.devices-layout .device-record-actions .badge {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--space-sm);
+}
+.timeline .local-device-tag {
+  margin-left: var(--space-sm);
+  font-size: 11px;
+}
+.settings-workspace > .identity-panel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  margin: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+.settings-workspace > .identity-panel .identity-heading {
+  margin: 0;
+  flex-shrink: 0;
+}
+.identity-details {
+  flex: 1;
+  min-width: 0;
+}
+.identity-code {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.identity-code code {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.identity-code .button {
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.settings-workspace > .identity-panel p {
+  margin: var(--space-xs) 0 0;
+  font-size: 11px;
+}
+.settings-workspace .settings-panel {
+  display: block;
+  overflow-y: auto;
+  min-height: 0;
+}
+@media (max-width: 768px) {
+  .settings-workspace > .identity-panel {
+    flex-wrap: wrap;
+    gap: var(--space-md);
+  }
+  .identity-details {
+    flex-basis: calc(100% - 180px);
+  }
+}
+@media (max-width: 600px) {
+  .settings-workspace > .identity-panel .identity-heading {
+    flex: 1;
+  }
+  .settings-workspace > .identity-panel .identity-details {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .identity-code code {
+    font-size: 11px;
+  }
+}

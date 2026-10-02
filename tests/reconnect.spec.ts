@@ -131,7 +131,12 @@ test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢�
     JSON.parse(localStorage.getItem('relay3-session')!),
   );
   expect(recovered.id).toBe(original.id);
-  expect((await admin('/status')).devices.filter((d: any) => d.id === original.id)).toHaveLength(1);
+  const selfDevices = (await admin('/status')).devices.filter((d: any) => d.id === original.id);
+  expect(selfDevices).toHaveLength(1);
+  expect(selfDevices[0].loginCount).toBe(4);
+  await desktop.getByRole('button', { name: '连接设备', exact: true }).click();
+  await expect(desktop.locator('.device-record')).toContainText('登录 4 次');
+  await expect(desktop.locator('.timeline .local-device-tag')).toHaveCount(4);
 });
 test('桌面连接远端后跨重启重连，手机重连不消费数字配对码', async () => {
   const { RelayService } = await import('../dist-electron/index.js');

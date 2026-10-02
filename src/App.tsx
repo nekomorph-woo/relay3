@@ -1021,7 +1021,7 @@ export default function App() {
                             : `有效至 ${new Date(admin.pairingCodeExpiresAt).toLocaleTimeString('zh-CN', { hour12: false })} · 一次有效`}
                         </small>
                       </div>
-                      <div className="actions">
+                      <div className="actions pairing-link-actions">
                         <Button
                           onClick={() =>
                             void run(() => copy(`${address}/#pair=${admin.pairingToken}`))
@@ -1080,7 +1080,7 @@ export default function App() {
                           <small
                             title={`首次连接 ${date(d.firstSeen)}${d.disconnectedAt ? ` · 断开 ${date(d.disconnectedAt)}` : ''} `}
                           >
-                            最近连接 {date(d.lastSeen)}
+                            登录 {d.loginCount} 次 · 最近连接 {date(d.lastSeen)}
                           </small>
                         </div>
                         <div className="device-record-actions">
@@ -1128,6 +1128,9 @@ export default function App() {
                         <span className="dot" />
                         <strong>{c.name}</strong>
                         <span>{c.ip}</span>
+                        {c.deviceId === boot?.deviceId && (
+                          <span className="badge local-device-tag">本机</span>
+                        )}
                         <p>
                           {date(c.connectedAt)} 连接 →{' '}
                           {c.disconnectedAt ? `${date(c.disconnectedAt)} 断开` : '当前连接中'}
@@ -1434,110 +1437,7 @@ export default function App() {
             </>
           )}
           {page === 'settings' && (
-            <section className="panel settings-panel">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    if (desktop) {
-                      setAdmin(await management('/settings', form));
-                      if (session && connected)
-                        await request(session.base, session.token, '/api/device', {
-                          name: form.deviceName,
-                        }).catch(() => {});
-                      setDeviceName(form.deviceName);
-                      setBoot((b) => (b ? { ...b, deviceName: form.deviceName } : b));
-                    } else {
-                      save('relay3-device-name', deviceName);
-                      if (session && connected)
-                        await request(session.base, session.token, '/api/device', {
-                          name: deviceName,
-                        }).catch(() => {});
-                    }
-                    inform('设置已保存');
-                  });
-                }}
-              >
-                <label>
-                  设备名称
-                  <input
-                    required
-                    maxLength={80}
-                    value={desktop ? form.deviceName : deviceName}
-                    onChange={(e) =>
-                      desktop
-                        ? setForm({ ...form, deviceName: e.target.value })
-                        : setDeviceName(e.target.value)
-                    }
-                  />
-                </label>
-                {desktop && (
-                  <>
-                    <div className="form-grid">
-                      <label>
-                        中转站端口
-                        <input
-                          type="number"
-                          min={1024}
-                          max={65535}
-                          required
-                          disabled={admin?.running}
-                          value={form.port}
-                          onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
-                        />
-                        <small>关闭中转站后可修改</small>
-                      </label>
-                      <label>
-                        完成后保留时间（小时）
-                        <input
-                          type="number"
-                          min={0.01}
-                          max={720}
-                          step="any"
-                          required
-                          value={form.retentionHours}
-                          onChange={(e) =>
-                            setForm({ ...form, retentionHours: Number(e.target.value) })
-                          }
-                        />
-                        <small>应用于已完成缓存</small>
-                      </label>
-                    </div>
-                    {(['cacheDir', 'receiveDir'] as const).map((k) => (
-                      <label key={k}>
-                        {k === 'cacheDir' ? '中转缓存位置' : '接收文件保存位置'}
-                        <div className="path-input">
-                          <input readOnly value={form[k]} />
-                          <Button
-                            disabled={k === 'cacheDir' && admin?.running}
-                            onClick={() =>
-                              void run(async () => {
-                                const p = await window.relay3!.pickDirectory();
-                                if (p) setForm((f) => ({ ...f, [k]: p }));
-                              })
-                            }
-                          >
-                            <FolderOpen size={17} />
-                            选择
-                          </Button>
-                        </div>
-                        <small>
-                          {k === 'cacheDir' ? '关闭中转站后可迁移到空目录。' : '同名文件自动编号。'}
-                        </small>
-                      </label>
-                    ))}
-                  </>
-                )}
-                <Button type="submit" kind="primary" disabled={busy}>
-                  保存设置
-                </Button>
-              </form>
-              {!desktop && (
-                <div className="note">
-                  <Smartphone size={18} />
-                  <p>下载位置由系统决定，保存后请确认收到。</p>
-                </div>
-              )}
+            <>
               <div className="identity-panel">
                 <div className="identity-heading">
                   <DeviceAvatar
@@ -1550,13 +1450,130 @@ export default function App() {
                     <strong>{boot?.deviceName ?? deviceName}</strong>
                   </div>
                 </div>
-                <code>{boot?.deviceId ?? mobileId.current}</code>
-                <p>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</p>
+                <div className="identity-details">
+                  <div className="identity-code">
+                    <code>{boot?.deviceId ?? mobileId.current}</code>
+                    <Button
+                      title="复制设备标识符"
+                      onClick={() => void run(() => copy(boot?.deviceId ?? mobileId.current))}
+                    >
+                      <Copy size={16} />
+                    </Button>
+                  </div>
+                  <p>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</p>
+                </div>
                 <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>
                   更换设备身份
                 </Button>
               </div>
-            </section>
+              <section className="panel settings-panel">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(async () => {
+                      if (desktop) {
+                        setAdmin(await management('/settings', form));
+                        if (session && connected)
+                          await request(session.base, session.token, '/api/device', {
+                            name: form.deviceName,
+                          }).catch(() => {});
+                        setDeviceName(form.deviceName);
+                        setBoot((b) => (b ? { ...b, deviceName: form.deviceName } : b));
+                      } else {
+                        save('relay3-device-name', deviceName);
+                        if (session && connected)
+                          await request(session.base, session.token, '/api/device', {
+                            name: deviceName,
+                          }).catch(() => {});
+                      }
+                      inform('设置已保存');
+                    });
+                  }}
+                >
+                  <label>
+                    设备名称
+                    <input
+                      required
+                      maxLength={80}
+                      value={desktop ? form.deviceName : deviceName}
+                      onChange={(e) =>
+                        desktop
+                          ? setForm({ ...form, deviceName: e.target.value })
+                          : setDeviceName(e.target.value)
+                      }
+                    />
+                  </label>
+                  {desktop && (
+                    <>
+                      <div className="form-grid">
+                        <label>
+                          中转站端口
+                          <input
+                            type="number"
+                            min={1024}
+                            max={65535}
+                            required
+                            disabled={admin?.running}
+                            value={form.port}
+                            onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                          />
+                          <small>关闭中转站后可修改</small>
+                        </label>
+                        <label>
+                          完成后保留时间（小时）
+                          <input
+                            type="number"
+                            min={0.01}
+                            max={720}
+                            step="any"
+                            required
+                            value={form.retentionHours}
+                            onChange={(e) =>
+                              setForm({ ...form, retentionHours: Number(e.target.value) })
+                            }
+                          />
+                          <small>应用于已完成缓存</small>
+                        </label>
+                      </div>
+                      {(['cacheDir', 'receiveDir'] as const).map((k) => (
+                        <label key={k}>
+                          {k === 'cacheDir' ? '中转缓存位置' : '接收文件保存位置'}
+                          <div className="path-input">
+                            <input readOnly value={form[k]} />
+                            <Button
+                              disabled={k === 'cacheDir' && admin?.running}
+                              onClick={() =>
+                                void run(async () => {
+                                  const p = await window.relay3!.pickDirectory();
+                                  if (p) setForm((f) => ({ ...f, [k]: p }));
+                                })
+                              }
+                            >
+                              <FolderOpen size={17} />
+                              选择
+                            </Button>
+                          </div>
+                          <small>
+                            {k === 'cacheDir'
+                              ? '关闭中转站后可迁移到空目录。'
+                              : '同名文件自动编号。'}
+                          </small>
+                        </label>
+                      ))}
+                    </>
+                  )}
+                  <Button type="submit" kind="primary" disabled={busy}>
+                    保存设置
+                  </Button>
+                </form>
+                {!desktop && (
+                  <div className="note">
+                    <Smartphone size={18} />
+                    <p>下载位置由系统决定，保存后请确认收到。</p>
+                  </div>
+                )}
+              </section>
+            </>
           )}
         </main>
       </div>

@@ -113,6 +113,16 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
     .toBe(2);
   const raw = '<script>window.bad=1</script>\n# 原样 Markdown\n' + '长文本'.repeat(120);
   await desktop.getByLabel('文字消息', { exact: true }).fill(raw);
+  const composeStyle = await desktop.getByLabel('文字消息', { exact: true }).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { border: style.borderWidth, outline: style.outlineStyle };
+  });
+  expect(composeStyle).toEqual({ border: '0px', outline: 'none' });
+  const inputBox = await desktop.getByLabel('文字消息', { exact: true }).boundingBox();
+  const sendBox = await desktop
+    .getByRole('button', { name: '发送文字', exact: true })
+    .boundingBox();
+  expect(sendBox!.y - inputBox!.y - inputBox!.height).toBeGreaterThanOrEqual(8);
   await desktop.getByRole('button', { name: '发送文字', exact: true }).click();
   await expect(mobile.locator('.chat-feed pre')).toHaveText(raw);
   expect(await mobile.evaluate(() => (window as any).bad)).toBeUndefined();
@@ -146,6 +156,10 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
     .locator('input')
     .check();
   await desktop.getByText('公开备注（可选）', { exact: true }).click();
+  const remarkSelect = await desktop.getByLabel('公开备注样式').boundingBox();
+  const remarkText = await desktop.getByLabel('公开备注', { exact: true }).boundingBox();
+  expect(Math.abs(remarkSelect!.y - remarkText!.y)).toBeLessThanOrEqual(1);
+  await desktop.screenshot({ path: 'test-results/feedback-remark-alignment.png' });
   await desktop.getByLabel('公开备注', { exact: true }).fill('公开线索：下次上线阅读');
   await desktop
     .getByRole('dialog', { name: '发送密文', exact: true })
