@@ -1,1 +1,12 @@
-[{"date":"2026-10-02","macrostructure":"Workbench","theme":"custom","theme_axes":"light / grotesk-sans / cool","enrichment":"none","nav":"N3","footer":"Ft2","brief":"relay3 局域网文件互传工作台"}]
+[
+  {
+    "date": "2026-10-02",
+    "macrostructure": "Workbench",
+    "theme": "custom",
+    "theme_axes": "light / grotesk-sans / cool",
+    "enrichment": "none",
+    "nav": "N3",
+    "footer": "Ft2",
+    "brief": "relay3 局域网文件互传工作台"
+  }
+]

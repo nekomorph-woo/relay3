@@ -17,7 +17,9 @@
     "pack": "npm run build && node scripts/icons.mjs && electron-builder --dir",
     "dist:mac": "npm run build && node scripts/icons.mjs && electron-builder --mac --arm64",
     "dist:win": "npm run build && node scripts/icons.mjs && electron-builder --win --x64",
-    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64"
+    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.0",
     "@types/node": "^24.0.0",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.0",
@@ -37,8 +40,8 @@
     "electron-builder": "^26.0.12",
     "lucide-react": "^0.468.0",
     "png-to-ico": "^3.0.1",
+    "prettier": "^3.9.9",
     "qrcode": "^1.5.4",
-    "@types/qrcode": "^1.5.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "^0.35.5",
