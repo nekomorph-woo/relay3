@@ -42,3 +42,9 @@ Windows 与 Intel Mac 的实际安装和运行、iOS Safari 与 Android 实机�
 - 安装包仍未商业签名或 Apple 公证；Windows 尚未实机运行验证。
 - 安装包通过 GitHub Release 提供，上传验证后删除本地安装包。
 - 已打包的 v0.3.1 Mac Apple Silicon 应用通过全部 4 组 Electron 集成测试，涵盖双向传输、移动视口、记录保留、目录管理和双角色运行。测试使用临时 Unix socket 直连转发避开本机代理，未修改系统代理设置。
+
+## Mac 下载后签名修复
+
+旧 v0.3.1 Mac DMG 的文件校验和正确，但应用保留了失效的 Electron 链接器签名；`codesign --verify --deep --strict` 报错 `code has no resources but signature indicates they must be present`。此前的本地运行测试没有覆盖下载隔离后的 Gatekeeper 行为。
+
+修复构建改为明确使用 ad-hoc 签名（`identity: "-"`），并关闭仅在 Developer ID 发布路径使用的 hardened runtime。Mac 构建命令增加严格签名验证。新应用和 DMG 内的应用均通过递归严格签名检查。ad-hoc 签名不是 Developer ID 身份签名，也不包含 Apple 公证，下载后仍可能需要用户在系统隐私与安全性设置允许打开。

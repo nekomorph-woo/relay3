@@ -15,9 +15,9 @@
     "test": "npm run build:backend && node --test tests/*.test.mjs",
     "test:ui": "playwright test",
     "pack": "npm run build && node scripts/icons.mjs && electron-builder --dir",
-    "dist:mac": "npm run build && node scripts/icons.mjs && electron-builder --mac --arm64",
+    "dist:mac": "npm run build && node scripts/icons.mjs && electron-builder --mac --arm64 && codesign --verify --deep --strict --verbose=2 release/mac-arm64/relay3.app",
     "dist:win": "npm run build && node scripts/icons.mjs && electron-builder --win --x64",
-    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64",
+    "dist:mac:x64": "npm run build && node scripts/icons.mjs && electron-builder --mac --x64 && codesign --verify --deep --strict --verbose=2 release/mac/relay3.app",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -75,11 +75,12 @@
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.utilities",
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "electronLanguages": [
         "en",
         "zh_CN"
-      ]
+      ],
+      "identity": "-"
     },
     "dmg": {
       "title": "relay3",
