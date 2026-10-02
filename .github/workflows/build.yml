@@ -1,4 +1,4 @@
-name: relay3 检查与安装包
+name: Relay3 检查与安装包
 on:
   push:
   pull_request:
@@ -27,7 +27,7 @@ jobs:
       - run: npm run ${{ matrix.command }}
       - uses: actions/upload-artifact@v4
         with:
-          name: relay3-${{ matrix.os }}
+          name: Relay3-${{ matrix.os }}
           path: |
             release/*.dmg
             release/*.exe

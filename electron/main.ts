@@ -31,8 +31,8 @@ import { pipeline } from 'node:stream/promises';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.join(dirname, '../dist/relay3-desktop.png');
-app.setName('relay3');
-if (process.env.RELAY3_DATA_DIR) app.setPath('userData', process.env.RELAY3_DATA_DIR);
+app.setName('Relay3');
+app.setPath('userData', process.env.RELAY3_DATA_DIR ?? path.join(app.getPath('appData'), 'relay3'));
 let service: RelayService;
 let window: BrowserWindow | null = null;
 let quitting = false;
@@ -65,7 +65,7 @@ async function createWindow() {
     height: 840,
     minWidth: 800,
     minHeight: 600,
-    title: 'relay3',
+    title: 'Relay3',
     backgroundColor: '#f5f6f7',
     icon: appIconPath,
     webPreferences: {
@@ -123,7 +123,7 @@ else {
       if (process.env.RELAY3_TEST_HUB === '1') await service.startHub();
       Menu.setApplicationMenu(null);
       app.setAboutPanelOptions({
-        applicationName: 'relay3',
+        applicationName: 'Relay3',
         applicationVersion: app.getVersion(),
         iconPath: appIconPath,
       });
@@ -206,7 +206,7 @@ else {
             path
               .basename(input.name.replace(/\\/g, '/'))
               .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-              .replace(/[. ]+$/, '') || 'relay3-file';
+              .replace(/[. ]+$/, '') || 'Relay3-file';
           if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i.test(safeName))
             safeName = '_' + safeName;
           let destination = path.join(dir, safeName),
@@ -310,7 +310,7 @@ else {
       });
     })
     .catch((err) => {
-      dialog.showErrorBox('relay3 启动失败', String(err));
+      dialog.showErrorBox('Relay3 启动失败', String(err));
       app.quit();
     });
   app.on('window-all-closed', () => app.quit());

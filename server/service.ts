@@ -845,7 +845,7 @@ export class RelayService {
         .header('Content-Length', t.size)
         .header(
           'Content-Disposition',
-          `attachment; filename="relay3-file"; filename*=UTF-8''${encodeURIComponent(t.name).replace(/'/g, '%27')}`,
+          `attachment; filename="Relay3-file"; filename*=UTF-8''${encodeURIComponent(t.name).replace(/'/g, '%27')}`,
         );
       return reply.send(stream);
     });

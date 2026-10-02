@@ -10,6 +10,7 @@ import {
   MessageSquare,
   RefreshCw,
   Users,
+  Unplug,
   History,
 } from 'lucide-react';
 import { request, stored, save, date, uuid, type Session } from '../api';
@@ -36,6 +37,7 @@ export function ChatHall({
   connected,
   visible,
   latestId,
+  onDisconnect,
   onCopy,
   onRead,
   management,
@@ -44,6 +46,7 @@ export function ChatHall({
   connected: boolean;
   visible: boolean;
   latestId: number;
+  onDisconnect: () => void;
   onCopy: (text: string) => Promise<void>;
   onRead: () => void;
   management?: (url: string, body?: unknown) => Promise<any>;
@@ -547,14 +550,24 @@ export function ChatHall({
             <div>
               <h1>群聊大厅</h1>
             </div>
-            <button
-              className="chat-details-action"
-              title="大厅信息"
-              aria-label="大厅信息"
-              onClick={() => setInfoExpanded(true)}
-            >
-              <Users size={20} />
-            </button>
+            <div className="page-actions">
+              <button
+                className="chat-details-action"
+                title="大厅信息"
+                aria-label="大厅信息"
+                onClick={() => setInfoExpanded(true)}
+              >
+                <Users size={20} />
+              </button>
+              <button
+                className="chat-disconnect-action"
+                aria-label="断开中转站"
+                title="断开中转站"
+                onClick={onDisconnect}
+              >
+                <Unplug size={16} />
+              </button>
+            </div>
           </header>
           <div className="chat-toolbar">
             <button

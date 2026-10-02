@@ -95,16 +95,17 @@ async function chat(page: Page, route: string, body?: unknown) {
   );
 }
 test('群聊原文展示、端侧密文、离线授权与手机布局', async () => {
-  await desktop.getByRole('button', { name: '开启本机中转站' }).click();
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   const status = await admin('/status');
   base = `http://127.0.0.1:${status.settings.port}`;
   await mobile.goto(`${base}/#pair=${status.pairingCode}`);
-  await mobile.getByRole('button', { name: '连接设备', exact: true }).click();
+  await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
   await mobile.getByLabel('设备名称').fill('授权手机');
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-  await expect(mobile.locator('.connection-label')).toContainText('已连接');
+  await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await enter(desktop);
   await enter(mobile);
   await expect
@@ -115,7 +116,7 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
   await desktop.getByRole('button', { name: '发送文字', exact: true }).click();
   await expect(mobile.locator('.chat-feed pre')).toHaveText(raw);
   expect(await mobile.evaluate(() => (window as any).bad)).toBeUndefined();
-  await mobile.getByRole('button', { name: '断开', exact: true }).click();
+  await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '刷新设备信息' }).click();
   await expect(desktop.locator('.chat-device-group').last()).toContainText('授权手机');
   await desktop.getByRole('button', { name: '发送密文', exact: true }).click();
@@ -132,10 +133,10 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
     .fill('离线设备的秘密消息');
   await desktop.getByRole('button', { name: '发送密文消息', exact: true }).click();
   await expect(desktop.locator('.chat-feed').getByLabel('已解密')).toBeVisible();
-  await mobile.getByRole('button', { name: '连接', exact: true }).click();
+  await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
   await mobile.getByLabel('配对码', { exact: true }).fill((await admin('/status')).pairingCode);
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-  await expect(mobile.locator('.connection-label')).toContainText('已连接');
+  await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await enter(mobile);
   await expect(mobile.getByRole('dialog', { name: '密文消息汇总' })).toBeVisible();
   await expect(mobile.locator('.chat-modal-content')).toContainText('离线设备的秘密消息');
@@ -180,7 +181,7 @@ test('未授权展示、密文汇总分页、组合清理与复制', async () =>
   try {
     const status = await admin('/status');
     await other.goto(`${base}/#pair=${status.pairingCode}`);
-    await other.getByRole('button', { name: '连接设备', exact: true }).click();
+    await other.getByRole('button', { name: '连接中转站', exact: true }).click();
     await other.getByLabel('设备名称').fill('未授权设备');
     await other.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await enter(other);

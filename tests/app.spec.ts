@@ -75,20 +75,28 @@ test.afterAll(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 test('桌面开启中转站，手机客户端连接，双向传输并保留记录', async () => {
-  await desktop.getByRole('button', { name: '开启本机中转站' }).click();
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站' }).click();
   await expect(desktop.getByRole('heading', { name: '中转站已开启' })).toBeVisible();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   const status = await admin('/status');
   base = `http://127.0.0.1:${status.settings.port}`;
   await mobile.goto(`${base}/#pair=${status.pairingCode}`);
-  await mobile.getByRole('button', { name: '连接设备', exact: true }).click();
+  await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
   await mobile.getByLabel('设备名称').fill('测试手机');
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-  await expect(mobile.locator('.connection-label')).toContainText('已连接');
+  await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
-  await expect(desktop.locator('.peer')).toContainText('测试手机');
-  await desktop.locator('.peer').filter({ hasText: '测试手机' }).click();
+  await expect(desktop.locator('.composer select')).toContainText('测试手机');
+  await desktop
+    .locator('.composer select')
+    .selectOption(
+      (await desktop
+        .locator('.composer select option')
+        .filter({ hasText: '测试手机' })
+        .getAttribute('value'))!,
+    );
   const filename =
     '这是一份用于检查手机收到电脑文件时长文件名布局的测试报告_2026年10月_项目资料与附件说明.txt';
   const content = Buffer.from('relay3 桌面发给手机\n'.repeat(120000));
@@ -167,7 +175,7 @@ test('手机页面在 320、375、414、768 像素下无横向溢出，设置可
   expect(errors).toEqual([]);
 });
 test('断开历史保存，中转站与客户端可独立关闭，目录路径可见', async () => {
-  await mobile.getByRole('button', { name: '断开', exact: true }).click();
+  await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '连接设备', exact: true }).click();
   await expect(desktop.locator('.device-record').filter({ hasText: '手机新名称' })).toContainText(
     '已断开',
@@ -183,6 +191,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
   await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+  await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
   await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
   expect(errors).toEqual([]);
 });
@@ -196,18 +205,18 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
   const remotePage = await context.newPage();
   try {
     await admin('/station/start', {});
-    await desktop.getByRole('button', { name: '连接', exact: true }).click();
+    await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
     await desktop
       .getByLabel('中转站地址或配对链接')
       .fill(`${remoteBase}/#pair=${remote.pairingToken}`);
     await desktop.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(desktop.locator('.connection-label')).toContainText('已连接');
+    await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
     expect((await admin('/status')).running).toBeTruthy();
     await remotePage.goto(`${remoteBase}/#pair=${remote.pairingToken}`);
-    await remotePage.getByRole('button', { name: '连接设备', exact: true }).click();
+    await remotePage.getByRole('button', { name: '连接中转站', exact: true }).click();
     await remotePage.getByLabel('设备名称').fill('远端手机');
     await remotePage.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(remotePage.locator('.connection-label')).toContainText('已连接');
+    await expect(remotePage.locator('main')).toHaveAttribute('data-connected', 'true');
     await remotePage.locator('.composer select').selectOption(boot.deviceId);
     const data = Buffer.from('跨中转站客户端记录');
     await remotePage
@@ -263,18 +272,18 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
     oldMobileId,
   );
   await mobile.reload();
-  await mobile.getByRole('button', { name: '连接', exact: true }).click();
+  await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
   await mobile.getByLabel('设备名称').fill('新身份手机');
   await mobile.getByLabel('配对码', { exact: true }).fill(after.pairingCode);
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-  await expect(mobile.locator('.connection-label')).toContainText('已连接');
+  await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '连接设备', exact: true }).click();
   const row = desktop.locator('.device-record').filter({ hasText: '新身份手机' });
   await expect(row).toContainText('已连接');
   await row.getByRole('button', { name: '清除', exact: true }).click();
   await desktop.getByRole('button', { name: '确认清理', exact: true }).click();
   await expect(row).toHaveCount(0);
-  await expect(mobile.locator('.connection-label')).not.toContainText('已连接');
+  await expect(mobile.locator('main')).not.toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '清理离线历史', exact: true }).click();
   const select = desktop.getByLabel('最近连接时间早于');
   expect(await select.locator('option').allTextContents()).toEqual([
@@ -293,5 +302,39 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
   await expect(desktop.getByRole('status')).toContainText('设备身份已更换');
   expect((await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId).not.toEqual(oldId);
   expect((await admin('/records')).total).toEqual(3);
+  expect(errors).toEqual([]);
+});
+
+test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚动', async () => {
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
+  const dismiss = desktop.getByRole('button', { name: '关闭提示', exact: true });
+  if (await dismiss.isVisible()) await dismiss.click();
+  const pages = ['文件传输', '群聊大厅', '中转站', '连接设备', '收发记录', '文件存储', '设置'];
+  for (const size of [
+    { width: 1220, height: 840 },
+    { width: 1080, height: 720 },
+  ]) {
+    await desktop.setViewportSize(size);
+    for (const [index, name] of pages.entries()) {
+      await desktop.getByRole('button', { name, exact: true }).click();
+      await expect(desktop.locator('.topbar')).toHaveCount(0);
+      const dimensions = await desktop.evaluate(() => ({
+        width: innerWidth,
+        height: innerHeight,
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+      }));
+      expect(dimensions.scrollWidth, name).toBeLessThanOrEqual(dimensions.width);
+      expect(dimensions.scrollHeight, name).toBeLessThanOrEqual(dimensions.height + 1);
+      if (size.width === 1220)
+        await desktop.screenshot({ path: `test-results/native-page-${index}.png` });
+    }
+  }
+  await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+  await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
+  await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
+  expect(await desktop.title()).toBe('Relay3');
   expect(errors).toEqual([]);
 });

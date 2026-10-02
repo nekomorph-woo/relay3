@@ -3,7 +3,7 @@
   "version": "0.3.4",
   "private": true,
   "description": "PC、Mac 与手机之间的局域网文件互传工具",
-  "author": "relay3",
+  "author": "Relay3",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -15,9 +15,9 @@
     "test": "npm run build:backend && node --test tests/*.test.mjs",
     "test:ui": "playwright test",
     "pack": "node scripts/icons.mjs && npm run build && electron-builder --dir",
-    "dist:mac": "node scripts/icons.mjs && npm run build && electron-builder --mac --arm64 && codesign --verify --deep --strict --verbose=2 release/mac-arm64/relay3.app",
+    "dist:mac": "node scripts/icons.mjs && npm run build && electron-builder --mac --arm64 && codesign --verify --deep --strict --verbose=2 release/mac-arm64/Relay3.app",
     "dist:win": "node scripts/icons.mjs && npm run build && electron-builder --win --x64",
-    "dist:mac:x64": "node scripts/icons.mjs && npm run build && electron-builder --mac --x64 && codesign --verify --deep --strict --verbose=2 release/mac/relay3.app",
+    "dist:mac:x64": "node scripts/icons.mjs && npm run build && electron-builder --mac --x64 && codesign --verify --deep --strict --verbose=2 release/mac/Relay3.app",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -54,7 +54,7 @@
   },
   "build": {
     "appId": "app.relay3.desktop",
-    "productName": "relay3",
+    "productName": "Relay3",
     "asar": true,
     "compression": "maximum",
     "directories": {
@@ -86,7 +86,7 @@
       "identity": "-"
     },
     "dmg": {
-      "title": "relay3",
+      "title": "Relay3",
       "icon": "build/icon.icns"
     },
     "win": {
@@ -104,7 +104,7 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     },
-    "artifactName": "relay3-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Relay3-${version}-${os}-${arch}.${ext}",
     "toolsets": {
       "nsis": "1.2.1"
     }

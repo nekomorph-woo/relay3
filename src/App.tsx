@@ -159,6 +159,11 @@ export default function App() {
     [connected, setConnected] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!notice || notice.error) return;
+    const timer = setTimeout(() => setNotice(null), 3500);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const [modal, setModal] = useState<
     | null
     | 'connect'
@@ -621,10 +626,9 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <img src="/relay3.png" alt="relay3 图标" />
-          <span>relay3</span>
+          <img src="/relay3.png" alt="Relay3 图标" />
+          <span>Relay3</span>
         </div>
-        <p className="brand-caption">文件，在设备间接力。</p>
         <nav aria-label="主导航">
           {nav.map(({ id, label, icon: Icon }) => (
             <button
@@ -654,49 +658,35 @@ export default function App() {
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
             </div>
           </div>
-          <span className="version">relay3 {boot?.version ?? '0.3.4'}</span>
+          <span className="version">Relay3 {boot?.version ?? '0.3.4'}</span>
         </div>
       </aside>
       <div className="workspace">
-        <header className="topbar">
-          <div className="mobile-brand">
-            <img src="/relay3.png" alt="" />
-            relay3
-          </div>
-          <span className="connection-label">
-            <span className={`dot ${connected ? 'on' : ''}`} />
-            {session
-              ? connected
-                ? `已连接 · ${hub?.stationName ?? session.stationName}`
-                : '连接已断开，正在等待重连'
-              : '尚未连接中转站'}
-          </span>
-          <div className="top-actions">
-            {session ? (
-              <Button onClick={disconnect} title="断开当前中转站">
-                <Unplug size={16} />
-                <span>断开</span>
-              </Button>
-            ) : (
-              <Button onClick={() => setModal('connect')}>
-                <Link size={16} />
-                连接
-              </Button>
-            )}
-          </div>
-        </header>
-        <main className={page === 'chat' && session ? 'chat-workspace' : undefined}>
+        <main
+          className={`native-page ${page}-workspace`}
+          data-connected={connected ? 'true' : 'false'}
+        >
           <div className="page-head" hidden={page === 'chat' && !!session}>
-            <div>
-              <h1>{pageInfo[page][0]}</h1>
-              <p>{pageInfo[page][1]}</p>
+            <h1>{pageInfo[page][0]}</h1>
+            <div className="page-actions">
+              {session ? (
+                <Button onClick={disconnect} title="断开当前中转站">
+                  <Unplug size={16} />
+                  断开中转站
+                </Button>
+              ) : (
+                <Button onClick={() => setModal('connect')}>
+                  <Link size={16} />
+                  连接中转站
+                </Button>
+              )}
+              {page === 'transfer' && desktop && (
+                <Button onClick={() => setPage('station')}>
+                  <Radio size={17} />
+                  管理中转站
+                </Button>
+              )}
             </div>
-            {page === 'transfer' && desktop && (
-              <Button onClick={() => setPage('station')}>
-                <Radio size={17} />
-                管理中转站
-              </Button>
-            )}
           </div>
           {notice && (
             <div
@@ -717,6 +707,7 @@ export default function App() {
               connected={connected}
               visible={page === 'chat'}
               latestId={hub?.chatLatestId ?? 0}
+              onDisconnect={disconnect}
               onCopy={copy}
               onRead={() => {
                 void request<HubState>(session.base, session.token, '/api/state')
@@ -733,41 +724,110 @@ export default function App() {
           )}
           {page === 'transfer' && (
             <>
-              {!session && (
-                <section className="welcome panel">
-                  <div className="welcome-symbol">
-                    <ArrowLeftRight size={34} />
+              <div className={`transfer-screen ${session ? 'has-session' : ''}`}>
+                <section className="panel transfer-queue">
+                  <div className="section-head">
+                    <h2>当前传输</h2>
+                    <span className="subtle">
+                      {transfers.length ? `${transfers.length} 项` : '0 项'}
+                    </span>
                   </div>
-                  <h2>连接，然后开始传输。</h2>
-                  <p>
-                    {desktop
-                      ? '开启本机中转站，或连接另一台电脑的中转站。'
-                      : '扫描电脑上的二维码，或输入配对码连接中转站。'}
-                  </p>
-                  <div className="actions">
-                    <Button kind="primary" onClick={() => setModal('connect')}>
-                      <Link size={17} />
-                      连接中转站
-                    </Button>
-                    {desktop && (
-                      <Button
-                        disabled={busy || !admin}
-                        onClick={() =>
-                          void run(async () => {
-                            if (!admin?.running) setAdmin(await management('/station/start', {}));
-                            setPage('station');
-                          })
-                        }
-                      >
-                        <Radio size={17} />
-                        {admin?.running ? '查看本机中转站' : '开启本机中转站'}
-                      </Button>
-                    )}
-                  </div>
-                </section>
-              )}
-              {session && (
-                <div className="transfer-layout">
+                  {transfers.length ? (
+                    transfers.map((t) => {
+                      const incoming = t.recipientId === session?.id;
+                      const amount =
+                        t.status === 'uploading'
+                          ? Math.max(t.uploaded, progress[t.id] ?? 0)
+                          : t.status === 'downloading'
+                            ? Math.max(t.downloaded, progress[t.id] ?? 0)
+                            : t.uploaded;
+                      const percent = t.size
+                        ? Math.min(100, Math.round((amount / t.size) * 100))
+                        : t.status === 'pending'
+                          ? 0
+                          : 100;
+                      return (
+                        <article className="transfer-row" key={t.id}>
+                          <div className={`direction ${incoming ? 'incoming' : ''}`}>
+                            {incoming ? <ArrowDownLeft size={23} /> : <ArrowUpRight size={23} />}
+                          </div>
+                          <div className="transfer-details">
+                            <strong>{t.name}</strong>
+                            <p>
+                              {sizes(t.size)} · {t.senderName} → {t.recipientName}
+                            </p>
+                            {['uploading', 'downloading'].includes(t.status) && (
+                              <>
+                                <progress
+                                  value={percent}
+                                  max="100"
+                                  aria-label={`${t.name} 传输进度`}
+                                />
+                                <small>
+                                  {percent}% · {sizes(amount)} / {sizes(t.size)}
+                                </small>
+                              </>
+                            )}
+                            {t.error && <small className="error-text">{t.error}</small>}
+                            {savedPaths[t.id] && <small>{savedPaths[t.id]}</small>}
+                          </div>
+                          <div className="transfer-actions">
+                            <Badge status={t.status} />
+                            {incoming && t.status === 'pending' && (
+                              <>
+                                <Button
+                                  kind="primary"
+                                  disabled={busy}
+                                  onClick={() => void run(() => action(t, 'accept'))}
+                                >
+                                  <Check size={16} />
+                                  接收
+                                </Button>
+                                <Button
+                                  disabled={busy}
+                                  onClick={() => void run(() => action(t, 'reject'))}
+                                >
+                                  拒绝
+                                </Button>
+                              </>
+                            )}
+                            {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
+                              <Button
+                                kind="primary"
+                                disabled={busy}
+                                onClick={() => void run(() => receive(t))}
+                              >
+                                <Download size={16} />
+                                {t.status === 'ready' ? '下载文件' : '重新下载'}
+                              </Button>
+                            )}
+                            {incoming && t.status === 'awaiting-confirm' && (
+                              <Button
+                                disabled={busy}
+                                onClick={() => void run(() => action(t, 'complete'))}
+                              >
+                                <Check size={16} />
+                                确认收到
+                              </Button>
+                            )}
+                            <Button
+                              disabled={busy && t.status !== 'downloading'}
+                              title="取消传输"
+                              onClick={() => void run(() => action(t, 'cancel'))}
+                            >
+                              <X size={16} />
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <Empty icon={<ArrowLeftRight size={28} />} title="还没有进行中的传输">
+                      {session ? '选择文件发送，或等待接收。' : '连接中转站后即可收发文件。'}
+                    </Empty>
+                  )}
+                </section>{' '}
+                {session && (
                   <section className="panel composer">
                     <div className="section-head">
                       <h2>发送文件</h2>
@@ -804,7 +864,7 @@ export default function App() {
                     >
                       <Upload size={28} />
                       <strong>选择文件，或拖到这里</strong>
-                      <span>支持多个文件，大文件采用流式传输</span>
+                      <span>可选择多个文件</span>
                       <input
                         aria-label="选择待发送文件"
                         type="file"
@@ -837,7 +897,7 @@ export default function App() {
                       <span className="subtle">
                         {files.length
                           ? `${files.length} 个文件 · ${sizes(files.reduce((n, f) => n + f.size, 0))}`
-                          : '文件只在你的局域网内传输'}
+                          : '选择接收设备和文件'}
                       </span>
                       <Button
                         kind="primary"
@@ -854,151 +914,8 @@ export default function App() {
                       </Button>
                     </div>
                   </section>
-                  <section className="panel device-panel">
-                    <div className="section-head">
-                      <h2>在线设备</h2>
-                      <Wifi size={18} />
-                    </div>
-                    {online.length ? (
-                      online.map((d) => (
-                        <button
-                          className={`peer ${recipient === d.id ? 'chosen' : ''}`}
-                          key={d.id}
-                          onClick={() => setRecipient(d.id)}
-                        >
-                          <span className="device-icon">
-                            {/iPhone|Android|手机/.test(d.platform) ? (
-                              <Smartphone size={23} />
-                            ) : (
-                              <Monitor size={23} />
-                            )}
-                          </span>
-                          <span>
-                            <strong>{d.name}</strong>
-                            <small>
-                              {d.platform} · {d.ip}
-                            </small>
-                          </span>
-                          <span className="dot on" />
-                        </button>
-                      ))
-                    ) : (
-                      <Empty icon={<Monitor size={26} />} title="等待其他设备加入">
-                        让另一台设备连接同一个中转站。
-                      </Empty>
-                    )}
-                    <div className="station-context">
-                      <Radio size={16} />
-                      <span>
-                        {hub?.stationName}
-                        <small>{session.base}</small>
-                      </span>
-                    </div>
-                  </section>
-                </div>
-              )}
-              <section className="transfer-queue">
-                <div className="section-head">
-                  <h2>当前传输</h2>
-                  <span className="subtle">
-                    {transfers.length ? `${transfers.length} 项` : '等待下一次接力'}
-                  </span>
-                </div>
-                {transfers.length ? (
-                  transfers.map((t) => {
-                    const incoming = t.recipientId === session?.id;
-                    const amount =
-                      t.status === 'uploading'
-                        ? Math.max(t.uploaded, progress[t.id] ?? 0)
-                        : t.status === 'downloading'
-                          ? Math.max(t.downloaded, progress[t.id] ?? 0)
-                          : t.uploaded;
-                    const percent = t.size
-                      ? Math.min(100, Math.round((amount / t.size) * 100))
-                      : t.status === 'pending'
-                        ? 0
-                        : 100;
-                    return (
-                      <article className="transfer-row" key={t.id}>
-                        <div className={`direction ${incoming ? 'incoming' : ''}`}>
-                          {incoming ? <ArrowDownLeft size={23} /> : <ArrowUpRight size={23} />}
-                        </div>
-                        <div className="transfer-details">
-                          <strong>{t.name}</strong>
-                          <p>
-                            {sizes(t.size)} · {t.senderName} → {t.recipientName}
-                          </p>
-                          {['uploading', 'downloading'].includes(t.status) && (
-                            <>
-                              <progress
-                                value={percent}
-                                max="100"
-                                aria-label={`${t.name} 传输进度`}
-                              />
-                              <small>
-                                {percent}% · {sizes(amount)} / {sizes(t.size)}
-                              </small>
-                            </>
-                          )}
-                          {t.error && <small className="error-text">{t.error}</small>}
-                          {savedPaths[t.id] && <small>{savedPaths[t.id]}</small>}
-                        </div>
-                        <div className="transfer-actions">
-                          <Badge status={t.status} />
-                          {incoming && t.status === 'pending' && (
-                            <>
-                              <Button
-                                kind="primary"
-                                disabled={busy}
-                                onClick={() => void run(() => action(t, 'accept'))}
-                              >
-                                <Check size={16} />
-                                接收
-                              </Button>
-                              <Button
-                                disabled={busy}
-                                onClick={() => void run(() => action(t, 'reject'))}
-                              >
-                                拒绝
-                              </Button>
-                            </>
-                          )}
-                          {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
-                            <Button
-                              kind="primary"
-                              disabled={busy}
-                              onClick={() => void run(() => receive(t))}
-                            >
-                              <Download size={16} />
-                              {t.status === 'ready' ? '下载文件' : '重新下载'}
-                            </Button>
-                          )}
-                          {incoming && t.status === 'awaiting-confirm' && (
-                            <Button
-                              disabled={busy}
-                              onClick={() => void run(() => action(t, 'complete'))}
-                            >
-                              <Check size={16} />
-                              确认收到
-                            </Button>
-                          )}
-                          <Button
-                            disabled={busy && t.status !== 'downloading'}
-                            title="取消传输"
-                            onClick={() => void run(() => action(t, 'cancel'))}
-                          >
-                            <X size={16} />
-                          </Button>
-                        </div>
-                      </article>
-                    );
-                  })
-                ) : (
-                  <Empty icon={<ArrowLeftRight size={28} />} title="还没有进行中的传输">
-                    选择文件并发送，或等待其他设备发来文件。
-                  </Empty>
                 )}
-              </section>
+              </div>
             </>
           )}
           {page === 'station' && admin && (
@@ -1012,9 +929,7 @@ export default function App() {
                     <Badge status={admin.running ? 'online' : 'offline'} />
                   </div>
                   <h2>{admin.running ? '中转站已开启' : '开启这台电脑的中转站'}</h2>
-                  <p>
-                    其他设备连接后，即可通过这台电脑互传文件。此电脑仍可作为客户端连接其他中转站。
-                  </p>
+                  <p>让同一局域网的电脑和手机加入，互传文件与文字。</p>
                   <div className="actions">
                     <Button
                       kind={admin.running ? '' : 'primary'}
@@ -1099,10 +1014,7 @@ export default function App() {
                         <small>
                           {Date.now() >= admin.pairingCodeExpiresAt
                             ? '配对码已过期，请生成新码'
-                            : `有效至 ${new Date(admin.pairingCodeExpiresAt).toLocaleTimeString('zh-CN', { hour12: false })}，成功配对后立即作废`}
-                        </small>
-                        <small>
-                          其他终端输入中转站地址与这 6 位数字即可连接，无需传递完整链接。
+                            : `有效至 ${new Date(admin.pairingCodeExpiresAt).toLocaleTimeString('zh-CN', { hour12: false })} · 一次有效`}
                         </small>
                       </div>
                       <div className="actions">
@@ -1137,14 +1049,12 @@ export default function App() {
               </section>
               <div className="note">
                 <Wifi size={18} />
-                <p>
-                  设备需要连接同一个局域网。首次开启时，请允许系统防火墙接受局域网连接；访客网络可能禁止设备互访。
-                </p>
+                <p>请允许防火墙接受连接；访客网络可能隔离设备。</p>
               </div>
             </>
           )}
           {page === 'devices' && admin && (
-            <>
+            <div className="devices-layout">
               <section className="panel">
                 <div className="section-head">
                   <h2>设备列表</h2>
@@ -1169,11 +1079,10 @@ export default function App() {
                           <p>
                             {d.platform} · {d.ip}
                           </p>
-                          <small>
-                            首次连接 {date(d.firstSeen)}
-                            <br />
+                          <small
+                            title={`首次连接 ${date(d.firstSeen)}${d.disconnectedAt ? ` · 断开 ${date(d.disconnectedAt)}` : ''} `}
+                          >
                             最近连接 {date(d.lastSeen)}
-                            {d.disconnectedAt && <> · 断开 {date(d.disconnectedAt)}</>}
                           </small>
                         </div>
                         <div className="device-record-actions">
@@ -1212,7 +1121,7 @@ export default function App() {
               <section className="panel connection-history">
                 <div className="section-head">
                   <h2>连接时间线</h2>
-                  <span className="subtle">显示最近 500 次，完整记录保存在数据库</span>
+                  <span className="subtle">最近 500 次</span>
                 </div>
                 {admin.connections.length ? (
                   <div className="timeline">
@@ -1232,7 +1141,7 @@ export default function App() {
                   <p className="subtle">设备连接与断开后会自动记录。</p>
                 )}
               </section>
-            </>
+            </div>
           )}
           {page === 'history' && (
             <>
@@ -1313,7 +1222,7 @@ export default function App() {
                     icon={<History size={28} />}
                     title={search ? '没有匹配的记录' : '还没有收发记录'}
                   >
-                    记录会持续保存；中转文件清理后，记录仍然保留。
+                    收发记录永久保留。
                   </Empty>
                 )}
               </section>
@@ -1353,175 +1262,181 @@ export default function App() {
                   <History size={23} />
                   <p>数据库占用</p>
                   <strong>{sizes(admin.sizes.database + admin.sizes.wal + admin.sizes.shm)}</strong>
-                  <small>收发记录、设备历史与设置</small>
+                  <small>消息、记录与设置</small>
                 </section>
               </div>
-              <section className="panel paths">
-                <div>
-                  <h3>中转文件位置</h3>
-                  <code>{admin.settings.cacheDir}</code>
-                  <Button onClick={() => void run(() => window.relay3!.openDirectory('cache'))}>
-                    <FolderOpen size={16} />
-                    打开目录
-                  </Button>
-                </div>
-                <div>
-                  <h3>SQLite 数据库位置</h3>
-                  <code>{admin.databasePath}</code>
-                  <div className="actions">
-                    <Button onClick={() => void run(() => window.relay3!.openDirectory('data'))}>
+              <details className="storage-locations">
+                <summary>
+                  <FolderOpen size={16} />
+                  存储位置与数据库整理
+                </summary>
+                <section className="panel paths">
+                  <div>
+                    <h3>中转文件位置</h3>
+                    <code>{admin.settings.cacheDir}</code>
+                    <Button onClick={() => void run(() => window.relay3!.openDirectory('cache'))}>
                       <FolderOpen size={16} />
                       打开目录
                     </Button>
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          await management('/database/compact', {});
-                          await refreshAdmin();
-                          inform('数据库已整理，历史记录保留');
-                        })
-                      }
-                    >
-                      整理空间
+                  </div>
+                  <div>
+                    <h3>SQLite 数据库位置</h3>
+                    <code>{admin.databasePath}</code>
+                    <div className="actions">
+                      <Button onClick={() => void run(() => window.relay3!.openDirectory('data'))}>
+                        <FolderOpen size={16} />
+                        打开目录
+                      </Button>
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            await management('/database/compact', {});
+                            await refreshAdmin();
+                            inform('数据库已整理，历史记录保留');
+                          })
+                        }
+                      >
+                        整理空间
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <h3>接收文件位置</h3>
+                    <code>{admin.settings.receiveDir}</code>
+                    <Button onClick={() => void run(() => window.relay3!.openDirectory('receive'))}>
+                      <FolderOpen size={16} />
+                      打开目录
                     </Button>
                   </div>
-                </div>
-                <div>
-                  <h3>接收文件位置</h3>
-                  <code>{admin.settings.receiveDir}</code>
-                  <Button onClick={() => void run(() => window.relay3!.openDirectory('receive'))}>
-                    <FolderOpen size={16} />
-                    打开目录
-                  </Button>
-                </div>
-              </section>
-              <section className="panel">
-                <div className="section-head">
-                  <div>
-                    <h2>当前存储的文件</h2>
-                    <p className="subtle">
-                      传输完成后 {admin.settings.retentionHours} 小时自动清理，仅清理中转缓存。
-                    </p>
+                </section>{' '}
+              </details>
+              <div className="storage-files">
+                <section className="panel">
+                  <div className="section-head">
+                    <div>
+                      <h2>当前存储的文件</h2>
+                      <p className="subtle">完成后 {admin.settings.retentionHours} 小时清理缓存</p>
+                    </div>
+                    <Button
+                      kind="danger"
+                      disabled={!selected.length || busy}
+                      onClick={() => setModal('clearCache')}
+                    >
+                      <Trash2 size={16} />
+                      清理所选{selected.length ? ` (${selected.length})` : ''}
+                    </Button>
                   </div>
-                  <Button
-                    kind="danger"
-                    disabled={!selected.length || busy}
-                    onClick={() => setModal('clearCache')}
-                  >
-                    <Trash2 size={16} />
-                    清理所选{selected.length ? ` (${selected.length})` : ''}
-                  </Button>
-                </div>
-                {cache?.entries.length ? (
-                  <>
-                    <label className="select-all">
-                      <input
-                        type="checkbox"
-                        checked={
-                          cache.entries.filter((e) => !e.busy).length > 0 &&
-                          cache.entries.filter((e) => !e.busy).every((e) => selected.includes(e.id))
-                        }
-                        onChange={(e) =>
-                          setSelected(
-                            e.target.checked
-                              ? cache.entries.filter((x) => !x.busy).map((x) => x.id)
-                              : [],
-                          )
-                        }
-                      />
-                      选择所有可清理文件
-                    </label>
-                    {cache.entries.map((e) => (
-                      <label className="cache-row" key={e.folder + e.id}>
+                  {cache?.entries.length ? (
+                    <>
+                      <label className="select-all">
                         <input
                           type="checkbox"
-                          disabled={e.busy}
-                          checked={selected.includes(e.id)}
-                          onChange={(ev) =>
+                          checked={
+                            cache.entries.filter((e) => !e.busy).length > 0 &&
+                            cache.entries
+                              .filter((e) => !e.busy)
+                              .every((e) => selected.includes(e.id))
+                          }
+                          onChange={(e) =>
                             setSelected(
-                              ev.target.checked
-                                ? [...selected, e.id]
-                                : selected.filter((id) => id !== e.id),
+                              e.target.checked
+                                ? cache.entries.filter((x) => !x.busy).map((x) => x.id)
+                                : [],
+                            )
+                          }
+                        />
+                        选择所有可清理文件
+                      </label>
+                      {cache.entries.map((e) => (
+                        <label className="cache-row" key={e.folder + e.id}>
+                          <input
+                            type="checkbox"
+                            disabled={e.busy}
+                            checked={selected.includes(e.id)}
+                            onChange={(ev) =>
+                              setSelected(
+                                ev.target.checked
+                                  ? [...selected, e.id]
+                                  : selected.filter((id) => id !== e.id),
+                              )
+                            }
+                          />
+                          <File size={20} />
+                          <div>
+                            <strong>{e.name}</strong>
+                            <small>
+                              {sizes(e.bytes)} ·{' '}
+                              {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
+                              <br />
+                              {e.expiresAt
+                                ? `自动清理：${date(e.expiresAt)}`
+                                : '尚未进入自动清理计时'}
+                            </small>
+                          </div>
+                          <Badge status={e.status} />
+                        </label>
+                      ))}
+                    </>
+                  ) : (
+                    <Empty icon={<HardDrive size={28} />} title="缓存目录是空的">
+                      传输经过本机中转站后，文件会显示在这里。
+                    </Empty>
+                  )}
+                </section>
+                <section className="panel received-panel">
+                  <div className="section-head">
+                    <div>
+                      <h2>本机已接收文件</h2>
+                      <p className="subtle">正式文件，不会自动清理。</p>
+                    </div>
+                    <Button
+                      kind="danger"
+                      disabled={!receivedSelected.length || busy}
+                      onClick={() => setModal('clearReceived')}
+                    >
+                      <Trash2 size={16} />
+                      删除所选文件
+                    </Button>
+                  </div>
+                  {received.length ? (
+                    received.map((f) => (
+                      <label className="cache-row received-row" key={f.id}>
+                        <input
+                          type="checkbox"
+                          checked={receivedSelected.includes(f.id)}
+                          onChange={(e) =>
+                            setReceivedSelected(
+                              e.target.checked
+                                ? [...receivedSelected, f.id]
+                                : receivedSelected.filter((id) => id !== f.id),
                             )
                           }
                         />
                         <File size={20} />
                         <div>
-                          <strong>{e.name}</strong>
+                          <strong>{f.name}</strong>
                           <small>
-                            {sizes(e.bytes)} · {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
+                            {sizes(f.size)} · {date(f.receivedAt)}
                             <br />
-                            {e.expiresAt
-                              ? `自动清理：${date(e.expiresAt)}`
-                              : '尚未进入自动清理计时'}
+                            {f.path}
                           </small>
                         </div>
-                        <Badge status={e.status} />
+                        <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
                       </label>
-                    ))}
-                  </>
-                ) : (
-                  <Empty icon={<HardDrive size={28} />} title="缓存目录是空的">
-                    传输经过本机中转站后，文件会显示在这里。
-                  </Empty>
-                )}
-              </section>
-              <section className="panel received-panel">
-                <div className="section-head">
-                  <div>
-                    <h2>本机已接收文件</h2>
-                    <p className="subtle">这些是已保存的正式文件，不会自动清理。</p>
-                  </div>
-                  <Button
-                    kind="danger"
-                    disabled={!receivedSelected.length || busy}
-                    onClick={() => setModal('clearReceived')}
-                  >
-                    <Trash2 size={16} />
-                    删除所选文件
-                  </Button>
-                </div>
-                {received.length ? (
-                  received.map((f) => (
-                    <label className="cache-row received-row" key={f.id}>
-                      <input
-                        type="checkbox"
-                        checked={receivedSelected.includes(f.id)}
-                        onChange={(e) =>
-                          setReceivedSelected(
-                            e.target.checked
-                              ? [...receivedSelected, f.id]
-                              : receivedSelected.filter((id) => id !== f.id),
-                          )
-                        }
-                      />
-                      <File size={20} />
-                      <div>
-                        <strong>{f.name}</strong>
-                        <small>
-                          {sizes(f.size)} · {date(f.receivedAt)}
-                          <br />
-                          {f.path}
-                        </small>
-                      </div>
-                      <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
-                    </label>
-                  ))
-                ) : (
-                  <Empty icon={<Download size={28} />} title="还没有本机接收文件">
-                    通过桌面应用接收的文件会列在这里。
-                  </Empty>
-                )}
-              </section>
-              <p className="storage-footnote">
-                手动清理缓存不会删除收发记录，也不会删除接收端已保存的文件。数据库历史如需清理，请到对应记录页面操作。
-              </p>
+                    ))
+                  ) : (
+                    <Empty icon={<Download size={28} />} title="还没有本机接收文件">
+                      通过桌面应用接收的文件会列在这里。
+                    </Empty>
+                  )}
+                </section>
+              </div>
+              <p className="storage-footnote">清理缓存保留历史和已接收文件。</p>
             </>
           )}
           {page === 'settings' && (
             <section className="panel settings-panel">
-              <h2>终端设置</h2>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1587,7 +1502,7 @@ export default function App() {
                             setForm({ ...form, retentionHours: Number(e.target.value) })
                           }
                         />
-                        <small>默认 1 小时，修改后适用于现有已完成缓存</small>
+                        <small>应用于已完成缓存</small>
                       </label>
                     </div>
                     {(['cacheDir', 'receiveDir'] as const).map((k) => (
@@ -1609,9 +1524,7 @@ export default function App() {
                           </Button>
                         </div>
                         <small>
-                          {k === 'cacheDir'
-                            ? '迁移前需关闭中转站；请选择空目录，已有缓存会一并迁移。'
-                            : '接收文件自动保存到此目录，同名文件会自动编号。'}
+                          {k === 'cacheDir' ? '关闭中转站后可迁移到空目录。' : '同名文件自动编号。'}
                         </small>
                       </label>
                     ))}
@@ -1624,24 +1537,16 @@ export default function App() {
               {!desktop && (
                 <div className="note">
                   <Smartphone size={18} />
-                  <p>
-                    手机通过浏览器下载文件。保存位置由系统决定；确认收到后，中转站才开始清理计时。
-                  </p>
+                  <p>下载位置由系统决定，保存后请确认收到。</p>
                 </div>
               )}
               <div className="identity-panel">
                 <h3>设备身份</h3>
                 <code>{boot?.deviceId ?? mobileId.current}</code>
-                <p>
-                  更换身份会断开当前连接、取消未完成传输，并清除本终端记住的配对凭证。设备名称、已接收文件和收发历史保留。
-                </p>
+                <p>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</p>
                 <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>
                   更换设备身份
                 </Button>
-              </div>
-              <div className="settings-note">
-                <h3>记录一直保留</h3>
-                <p>收发记录和连接历史不自动清理。清理中转缓存只释放文件空间。</p>
               </div>
             </section>
           )}
@@ -1810,14 +1715,6 @@ export default function App() {
             </Button>
           </div>
         </Modal>
-      )}
-      {!desktop && !session && pairing && modal !== 'connect' && (
-        <div className="join-banner">
-          <span>已识别中转站配对码</span>
-          <Button kind="primary" onClick={() => setModal('connect')}>
-            连接设备
-          </Button>
-        </div>
       )}
     </div>
   );

@@ -1,6 +1,14 @@
 [
   {
     "date": "2026-10-02",
+    "scope": "all pages",
+    "macrostructure": "Native workbench",
+    "theme": "custom muted slate",
+    "enrichment": "none",
+    "brief": "统一 Relay3 品牌，移除顶部状态和连接引导卡，收紧页头，列表内部滚动，手机自然堆叠"
+  },
+  {
+    "date": "2026-10-02",
     "scope": "chat",
     "macrostructure": "Chat workbench",
     "theme": "custom muted slate",

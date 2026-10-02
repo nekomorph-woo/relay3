@@ -16,7 +16,7 @@ if (direct) {
   await service.startControl();
   await service.startHub();
   console.log(
-    `relay3 已启动：${service.addresses().join('、') || 'http://127.0.0.1:' + service.store.settings.port}`,
+    `Relay3 已启动：${service.addresses().join('、') || 'http://127.0.0.1:' + service.store.settings.port}`,
   );
   console.log(
     `配对链接：http://127.0.0.1:${service.store.settings.port}/#pair=${service.pairingToken}`,

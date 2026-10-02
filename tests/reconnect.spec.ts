@@ -88,23 +88,25 @@ async function restart() {
   boot = await desktop.evaluate(() => window.relay3!.bootstrap());
 }
 test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢复', async () => {
-  await desktop.getByRole('button', { name: '开启本机中转站' }).click();
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   const original = await desktop.evaluate(() =>
     JSON.parse(localStorage.getItem('relay3-session')!),
   );
-  await desktop.getByRole('button', { name: '断开', exact: true }).click();
+  await desktop.getByRole('button', { name: '断开中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   expect(
     await desktop.evaluate(() => JSON.parse(localStorage.getItem('relay3-session')!).token),
   ).toBe(original.token);
   await restart();
   expect(Object.values(boot.savedHubs).some((s: any) => s.token === original.token)).toBeTruthy();
-  await desktop.getByRole('button', { name: '开启本机中转站' }).click();
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   expect(await desktop.evaluate(() => JSON.parse(localStorage.getItem('relay3-session')!).id)).toBe(
     original.id,
   );
@@ -121,9 +123,10 @@ test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢�
     env: { ...process.env, RELAY3_DATA_DIR: dir },
   });
   desktop = await app.firstWindow();
-  await desktop.getByRole('button', { name: '开启本机中转站' }).click();
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
-  await expect(desktop.locator('.connection-label')).toContainText('已连接');
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   const recovered = await desktop.evaluate(() =>
     JSON.parse(localStorage.getItem('relay3-session')!),
   );
@@ -137,50 +140,50 @@ test('桌面连接远端后跨重启重连，手机重连不消费数字配对�
   await remote.startHub();
   const remoteBase = `http://127.0.0.1:${remote.hub.server.address().port}`;
   try {
-    await desktop.getByRole('button', { name: '断开', exact: true }).click();
-    await desktop.getByRole('button', { name: '连接', exact: true }).click();
+    await desktop.getByRole('button', { name: '断开中转站', exact: true }).click();
+    await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
     await desktop
       .getByLabel('中转站地址或配对链接')
       .fill(`${remoteBase}/#pair=${remote.pairingToken}`);
     await desktop.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(desktop.locator('.connection-label')).toContainText('已连接');
+    await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
     const original = await desktop.evaluate(() =>
       JSON.parse(localStorage.getItem('relay3-session')!),
     );
     await restart();
     expect(boot.savedHubs[remoteBase].token).toBe(original.token);
-    await desktop.getByRole('button', { name: '连接', exact: true }).click();
+    await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
     await desktop
       .locator('.remembered')
       .getByRole('button')
       .filter({ hasText: remoteBase })
       .click();
-    await expect(desktop.locator('.connection-label')).toContainText('已连接');
+    await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
     expect(
       await desktop.evaluate(() => JSON.parse(localStorage.getItem('relay3-session')!).token),
     ).toBe(original.token);
     await mobile.goto(`${remoteBase}/#pair=${remote.pairingCode}`);
-    await mobile.getByRole('button', { name: '连接设备', exact: true }).click();
+    await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
     await mobile.getByLabel('设备名称').fill('重连手机');
     await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(mobile.locator('.connection-label')).toContainText('已连接');
+    await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
     const code = remote.pairingCode;
-    await mobile.getByRole('button', { name: '断开', exact: true }).click();
-    await mobile.getByRole('button', { name: '连接', exact: true }).click();
+    await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
+    await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
     await mobile.getByLabel('配对码', { exact: true }).fill('000000');
     await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(mobile.locator('.connection-label')).toContainText('已连接');
+    await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
     expect(remote.pairingCode).toBe(code);
     const mobileId = await mobile.evaluate(
       () => JSON.parse(localStorage.getItem('relay3-session')!).id,
     );
     remote.forgetDevice(mobileId);
-    await expect(mobile.locator('.connection-label')).not.toContainText('已连接');
-    await mobile.getByRole('button', { name: '断开', exact: true }).click();
-    await mobile.getByRole('button', { name: '连接', exact: true }).click();
+    await expect(mobile.locator('main')).not.toHaveAttribute('data-connected', 'true');
+    await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
+    await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
     await mobile.getByLabel('配对码', { exact: true }).fill(remote.pairingCode);
     await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
-    await expect(mobile.locator('.connection-label')).toContainText('已连接');
+    await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
 
     expect(errors).toEqual([]);
   } finally {
