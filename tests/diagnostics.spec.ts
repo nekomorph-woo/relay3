@@ -1,3 +1,4 @@
+import { version as appVersion } from '../package.json';
 import { test, expect, _electron } from '@playwright/test';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -63,7 +64,7 @@ test('统一异常采集、崩溃记录、脱敏导出与确认清理', async ()
     await page.getByRole('button', { name: '导出诊断日志' }).click();
     await expect.poll(() => existsSync(archive)).toBeTruthy();
     const files = unzipSync(readFileSync(archive));
-    expect(JSON.parse(strFromU8(files['manifest.json'])).version).toBe('0.3.6');
+    expect(JSON.parse(strFromU8(files['manifest.json'])).version).toBe(appVersion);
     expect(strFromU8(files['logs/main.log'])).toContain('diagnostic-window-error');
     expect(
       Object.keys(files).some((name) => name.includes('sqlite') || name.includes('chat-keys')),

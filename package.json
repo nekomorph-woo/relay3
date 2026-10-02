@@ -1,6 +1,6 @@
 {
   "name": "relay3",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "description": "PC、Mac 与手机之间的局域网文件互传工具",
   "author": "Relay3",
