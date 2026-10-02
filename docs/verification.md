@@ -41,3 +41,4 @@ Windows 与 Intel Mac 的实际安装和运行、iOS Safari 与 Android 实机�
 - TypeScript 检查、生产构建与 4 组服务测试通过。
 - 安装包仍未商业签名或 Apple 公证；Windows 尚未实机运行验证。
 - 安装包通过 GitHub Release 提供，上传验证后删除本地安装包。
+- 已打包的 v0.3.1 Mac Apple Silicon 应用通过全部 4 组 Electron 集成测试，涵盖双向传输、移动视口、记录保留、目录管理和双角色运行。测试使用临时 Unix socket 直连转发避开本机代理，未修改系统代理设置。
