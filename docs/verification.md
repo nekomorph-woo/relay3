@@ -182,3 +182,7 @@ e3024c170b5455e1c4bd2f30e22fe6fd706f9232aabbe71cbf9a21baceee895b  Relay3-0.3.5-w
 f4197befd339be1aa7951a7e8a82a1d918af7bf5e06074b3840e1313b8b33d31  Relay3-0.3.6-mac-arm64.dmg
 e7f9248572b166f26e457d7891bbe8c919f268e90abfaf8d83de8f01b51da435  Relay3-0.3.6-win-x64.exe
 ```
+
+### v0.3.6 发布确认（2026-10-03）
+
+用户已明确授权推送、创建 v0.3.6 标签和发布 Release。两项安装包的大小与 SHA-256 再次核对一致，Mac 严格递归签名校验通过。前述等待确认记录为当时状态；本次发布使用以上最终安装包。上传后核对 GitHub 的资源状态、大小和 SHA-256，成功后清理本地安装包，保留可运行的 Mac 应用。
