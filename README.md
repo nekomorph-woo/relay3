@@ -1,6 +1,6 @@
 # Relay3
 
-当前源码版本：0.3.4（等待确认发布）。最新已发布安装包：[GitHub Release](https://github.com/nekomorph-woo/relay3/releases/tag/v0.3.3)，提供 Mac Apple Silicon 与 Windows x64。
+当前版本：0.3.4。最新已发布安装包：[GitHub Release](https://github.com/nekomorph-woo/relay3/releases/tag/v0.3.4)，提供 Mac Apple Silicon 与 Windows x64。
 
 PC、Mac、手机之间的局域网文件互传与文字群聊工具。桌面版支持 Windows 10 及更新版本、macOS 13 及更新版本。桌面端使用 Electron，手机通过浏览器连接，不需要安装客户端。所有前端资源随应用附带，运行时不依赖外网。
 
