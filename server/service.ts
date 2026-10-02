@@ -20,6 +20,7 @@ import { pipeline } from 'node:stream/promises';
 import { Transform, type Readable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
+import { ChatStore, registerChat } from './chat';
 import { Store, type Device, type Transfer, activeStatuses } from './store';
 
 const token = () => randomBytes(32).toString('hex');
@@ -38,6 +39,7 @@ function bearer(r: FastifyRequest) {
 
 export class RelayService {
   store: Store;
+  chat: ChatStore;
   closed = false;
   adminToken = token();
   pairingToken = token();
@@ -80,6 +82,7 @@ export class RelayService {
   }
   forgetDevice(id: string) {
     this.revokeDevice(id);
+    this.chat.forget(id);
     this.store.db.prepare('DELETE FROM connections WHERE deviceId=?').run(id);
     this.store.db.prepare('DELETE FROM devices WHERE id=?').run(id);
   }
@@ -97,6 +100,7 @@ export class RelayService {
     receiveDir?: string,
   ) {
     this.store = new Store(dataDir, receiveDir);
+    this.chat = new ChatStore(this.store.db);
     this.ensureCache();
     this.cleanTimer = setInterval(() => this.cleanup(), 30_000);
     this.cleanTimer.unref();
@@ -147,6 +151,8 @@ export class RelayService {
     return {
       stationId: this.store.settings.stationId,
       stationName: this.store.settings.deviceName,
+      chatLatestId: this.chat.latest(),
+      chatUnread: this.chat.unread(d.id),
       self: d,
       devices: this.store
         .devices()
@@ -304,6 +310,7 @@ export class RelayService {
     app.addHook('onRequest', async (r) => {
       if (r.url.startsWith('/admin/') && bearer(r) !== this.adminToken) fail('管理权限不足', 401);
     });
+    registerChat(app, this, true);
     app.get('/admin/status', async () => this.status());
     app.post('/admin/station/start', async () => {
       await this.startHub();
@@ -488,6 +495,7 @@ export class RelayService {
     app.addContentTypeParser('application/octet-stream', (req, payload, done) =>
       done(null, payload),
     );
+    registerChat(app, this, false);
     app.get('/api/info', async () => ({
       name: this.store.settings.deviceName,
       stationId: this.store.settings.stationId,
@@ -814,6 +822,7 @@ export class RelayService {
     await app.close();
   }
   async close() {
+    if (this.closed) return;
     clearInterval(this.cleanTimer);
     clearInterval(this.heartbeat);
     await this.stopHub(true);

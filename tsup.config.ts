@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 export default defineConfig({
-  entry: { main: 'electron/main.ts', index: 'server/index.ts' },
+  entry: { main: 'electron/main.ts', index: 'server/index.ts', chatCrypto: 'src/chat/crypto.ts' },
   format: ['esm'],
   outDir: 'dist-electron',
   target: 'node24',
