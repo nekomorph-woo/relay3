@@ -193,6 +193,18 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
   await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
   await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
+  await expect(desktop.locator('.storage-location-card')).toHaveCount(3);
+  const status = await admin('/status');
+  for (const [title, fullPath] of [
+    ['中转文件位置', status.settings.cacheDir],
+    ['SQLite 数据库位置', status.databasePath],
+    ['接收文件位置', status.settings.receiveDir],
+  ]) {
+    await desktop.getByRole('button', { name: `复制${title}`, exact: true }).click();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(fullPath);
+  }
+  await desktop.screenshot({ path: 'test-results/storage-location-cards.png' });
+
   expect(errors).toEqual([]);
 });
 

@@ -1271,46 +1271,64 @@ export default function App() {
                   <FolderOpen size={16} />
                   存储位置与数据库整理
                 </summary>
-                <section className="panel paths">
-                  <div>
-                    <h3>中转文件位置</h3>
-                    <code>{admin.settings.cacheDir}</code>
-                    <Button onClick={() => void run(() => window.relay3!.openDirectory('cache'))}>
-                      <FolderOpen size={16} />
-                      打开目录
-                    </Button>
-                  </div>
-                  <div>
-                    <h3>SQLite 数据库位置</h3>
-                    <code>{admin.databasePath}</code>
-                    <div className="actions">
-                      <Button onClick={() => void run(() => window.relay3!.openDirectory('data'))}>
-                        <FolderOpen size={16} />
-                        打开目录
-                      </Button>
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            await management('/database/compact', {});
-                            await refreshAdmin();
-                            inform('数据库已整理，历史记录保留');
-                          })
-                        }
-                      >
-                        整理空间
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    <h3>接收文件位置</h3>
-                    <code>{admin.settings.receiveDir}</code>
-                    <Button onClick={() => void run(() => window.relay3!.openDirectory('receive'))}>
-                      <FolderOpen size={16} />
-                      打开目录
-                    </Button>
-                  </div>
-                </section>{' '}
+                <div className="paths">
+                  {[
+                    {
+                      key: 'cache' as const,
+                      title: '中转文件位置',
+                      remark: '暂存传输文件，完成后按保留时间清理。',
+                      path: admin.settings.cacheDir,
+                    },
+                    {
+                      key: 'data' as const,
+                      title: 'SQLite 数据库位置',
+                      remark: '保存文字消息、设备连接、收发记录与设置。',
+                      path: admin.databasePath,
+                    },
+                    {
+                      key: 'receive' as const,
+                      title: '接收文件位置',
+                      remark: '保存本机已接收的正式文件，不会自动清理。',
+                      path: admin.settings.receiveDir,
+                    },
+                  ].map((location) => (
+                    <section className="panel storage-location-card" key={location.key}>
+                      <h3>{location.title}</h3>
+                      <p className="subtle">{location.remark}</p>
+                      <div className="storage-location-path">
+                        <Button
+                          title={`复制${location.title}`}
+                          onClick={() => void run(() => copy(location.path))}
+                        >
+                          <Copy size={16} />
+                        </Button>
+                        <code>{location.path}</code>
+                      </div>
+                      <div className="storage-location-actions">
+                        <Button
+                          onClick={() => void run(() => window.relay3!.openDirectory(location.key))}
+                        >
+                          <FolderOpen size={16} />
+                          打开目录
+                        </Button>
+                        {location.key === 'data' && (
+                          <Button
+                            disabled={busy}
+                            onClick={() =>
+                              void run(async () => {
+                                await management('/database/compact', {});
+                                await refreshAdmin();
+                                inform('数据库已整理，历史记录保留');
+                              })
+                            }
+                          >
+                            整理空间
+                          </Button>
+                        )}
+                      </div>
+                    </section>
+                  ))}
+                </div>
               </details>
               <div className="storage-files">
                 <section className="panel">

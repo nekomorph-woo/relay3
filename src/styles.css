@@ -2916,3 +2916,55 @@ main.native-page {
     font-size: 11px;
   }
 }
+
+/* 存储目录卡片：用途、完整路径与等宽操作。 */
+.storage-locations .paths {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.storage-location-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-sm);
+  margin: 0;
+}
+.storage-location-card h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.storage-location-card > p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.storage-location-path {
+  display: flex;
+  align-items: start;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-sm) 0;
+}
+.storage-location-path code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.7;
+}
+.storage-locations .storage-location-path .button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.storage-location-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: auto;
+}
+.storage-location-actions .button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-sm);
+}
