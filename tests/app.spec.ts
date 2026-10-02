@@ -10,6 +10,7 @@ import {
 } from '@playwright/test';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 let app: ElectronApplication,
   browser: Browser,
@@ -50,7 +51,11 @@ test.beforeAll(async () => {
   desktop.on('pageerror', (e) => errors.push(e.message));
   await desktop.waitForLoadState('domcontentloaded');
   boot = await desktop.evaluate(() => window.relay3!.bootstrap());
-  await admin('/settings', { receiveDir: path.join(dir, 'received') });
+  const portServer = net.createServer();
+  await new Promise<void>((resolve) => portServer.listen(0, '127.0.0.1', resolve));
+  const testPort = (portServer.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => portServer.close(() => resolve()));
+  await admin('/settings', { receiveDir: path.join(dir, 'received'), port: testPort });
   browser = await chromium.launch({ args: ['--no-proxy-server'] });
   context = await browser.newContext({
     viewport: { width: 375, height: 812 },
@@ -76,7 +81,7 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await expect(desktop.locator('.connection-label')).toContainText('已连接');
   const status = await admin('/status');
   base = `http://127.0.0.1:${status.settings.port}`;
-  await mobile.goto(`${base}/#pair=${status.pairingToken}`);
+  await mobile.goto(`${base}/#pair=${status.pairingCode}`);
   await mobile.getByRole('button', { name: '连接设备', exact: true }).click();
   await mobile.getByLabel('设备名称').fill('测试手机');
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
@@ -84,12 +89,27 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
   await expect(desktop.locator('.peer')).toContainText('测试手机');
   await desktop.locator('.peer').filter({ hasText: '测试手机' }).click();
+  const filename =
+    '这是一份用于检查手机收到电脑文件时长文件名布局的测试报告_2026年10月_项目资料与附件说明.txt';
   const content = Buffer.from('relay3 桌面发给手机\n'.repeat(120000));
   await desktop
     .getByLabel('选择待发送文件')
-    .setInputFiles({ name: '桌面文件.txt', mimeType: 'text/plain', buffer: content });
+    .setInputFiles({ name: filename, mimeType: 'text/plain', buffer: content });
   await desktop.getByRole('button', { name: '发送', exact: true }).click();
-  const incoming = mobile.locator('.transfer-row').filter({ hasText: '桌面文件.txt' });
+  const incoming = mobile.locator('.transfer-row').filter({ hasText: filename });
+  for (const width of [320, 375, 414, 768]) {
+    await mobile.setViewportSize({ width, height: 900 });
+    const details = await incoming.locator('.transfer-details').boundingBox();
+    expect(details!.width).toBeGreaterThan(200);
+    const title = await incoming.locator('strong').boundingBox();
+    expect(title!.height).toBeLessThan(150);
+    expect(await mobile.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    await expect(incoming.getByRole('button', { name: '接收', exact: true })).toBeVisible();
+  }
+  await mobile.setViewportSize({ width: 375, height: 812 });
+  await mobile.screenshot({ path: 'test-results/mobile-long-filename.png', fullPage: true });
   await incoming.getByRole('button', { name: '接收', exact: true }).click();
   await expect(incoming.getByRole('button', { name: '下载文件', exact: true })).toBeVisible();
   const downloadPromise = mobile.waitForEvent('download');
@@ -222,4 +242,56 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await remotePage.close();
     await remote.close();
   }
+});
+
+test('原生复制、各终端更换身份、按设备删除与离线清理选项', async () => {
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '复制配对链接', exact: true }).click();
+  await expect(desktop.getByRole('status')).toContainText('已复制');
+  const clipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
+  expect(clipboard).toContain('/#pair=');
+  const before = await admin('/status');
+  await desktop.getByRole('button', { name: '生成新码', exact: true }).click();
+  const after = await admin('/status');
+  expect(after.pairingCode).not.toEqual(before.pairingCode);
+  await mobile.getByRole('button', { name: '设置', exact: true }).click();
+  const oldMobileId = await mobile.evaluate(() => localStorage.getItem('relay3-device-id'));
+  await mobile.getByRole('button', { name: '更换设备身份', exact: true }).click();
+  await mobile.getByRole('button', { name: '确认更换', exact: true }).click();
+  await expect(mobile.getByRole('status')).toContainText('设备身份已更换');
+  expect(await mobile.evaluate(() => localStorage.getItem('relay3-device-id'))).not.toEqual(
+    oldMobileId,
+  );
+  await mobile.reload();
+  await mobile.getByRole('button', { name: '连接', exact: true }).click();
+  await mobile.getByLabel('设备名称').fill('新身份手机');
+  await mobile.getByLabel('配对码', { exact: true }).fill(after.pairingCode);
+  await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
+  await expect(mobile.locator('.connection-label')).toContainText('已连接');
+  await desktop.getByRole('button', { name: '连接设备', exact: true }).click();
+  const row = desktop.locator('.device-record').filter({ hasText: '新身份手机' });
+  await expect(row).toContainText('已连接');
+  await row.getByRole('button', { name: '清除', exact: true }).click();
+  await desktop.getByRole('button', { name: '确认清理', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await expect(mobile.locator('.connection-label')).not.toContainText('已连接');
+  await desktop.getByRole('button', { name: '清理离线历史', exact: true }).click();
+  const select = desktop.getByLabel('最近连接时间早于');
+  expect(await select.locator('option').allTextContents()).toEqual([
+    '1 小时前',
+    '24 小时前',
+    '7 天前',
+    '30 天前',
+  ]);
+  await select.selectOption('1');
+  await desktop.getByRole('button', { name: '确认清理', exact: true }).click();
+  await expect(desktop.getByRole('status')).toContainText('已清理');
+  await desktop.getByRole('button', { name: '设置', exact: true }).click();
+  const oldId = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId;
+  await desktop.getByRole('button', { name: '更换设备身份', exact: true }).click();
+  await desktop.getByRole('button', { name: '确认更换', exact: true }).click();
+  await expect(desktop.getByRole('status')).toContainText('设备身份已更换');
+  expect((await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId).not.toEqual(oldId);
+  expect((await admin('/records')).total).toEqual(3);
+  expect(errors).toEqual([]);
 });

@@ -26,6 +26,8 @@ export interface AdminState {
   running: boolean;
   addresses: string[];
   pairingToken: string;
+  pairingCode: string;
+  pairingCodeExpiresAt: number;
   settings: {
     stationId: string;
     deviceId: string;
@@ -67,6 +69,7 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      copyText(text: string): Promise<boolean>;
       bootstrap(): Promise<Bootstrap>;
       pickDirectory(): Promise<string | null>;
       openDirectory(kind: string): Promise<boolean>;

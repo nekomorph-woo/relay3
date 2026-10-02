@@ -1262,3 +1262,83 @@ dialog::backdrop {
 .received-panel {
   margin-top: var(--space-xl);
 }
+
+/* Keep filenames and controls in separate tracks on narrow screens. */
+@media (max-width: 900px) {
+  .transfer-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .transfer-details {
+    width: auto;
+    min-width: 0;
+  }
+  .transfer-actions {
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+}
+.transfer-details strong {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.numeric-pairing {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+}
+.numeric-pairing code {
+  display: block;
+  font-size: 32px;
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+  padding: 8px 0;
+}
+.numeric-pairing small {
+  display: block;
+  margin-top: 10px;
+  color: var(--color-muted);
+}
+.numeric-pairing .actions {
+  flex-wrap: wrap;
+}
+.identity-panel {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-rule);
+}
+.identity-panel code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.identity-panel p {
+  margin-bottom: 16px;
+  color: var(--color-muted);
+}
+.clipboard-fallback {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+}
+dialog textarea {
+  width: 100%;
+  min-height: 100px;
+  margin: 16px 0;
+  padding: 12px;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .device-record {
+    flex-wrap: wrap;
+  }
+  .device-record-actions {
+    flex-wrap: wrap;
+  }
+}

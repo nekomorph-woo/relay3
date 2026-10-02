@@ -43,6 +43,7 @@ import {
   type AdminState,
   type CacheState,
   type Transfer,
+  type Device,
 } from './api';
 
 type Page = 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings';
@@ -156,8 +157,20 @@ export default function App() {
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null),
     [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<
-    null | 'connect' | 'clearRecords' | 'clearDevices' | 'clearCache' | 'stop' | 'clearReceived'
+    | null
+    | 'connect'
+    | 'clearRecords'
+    | 'clearDevices'
+    | 'clearCache'
+    | 'stop'
+    | 'clearReceived'
+    | 'resetIdentity'
+    | 'removeDevice'
+    | 'copy'
   >(null);
+  const [clearHours, setClearHours] = useState(24);
+  const [removeDevice, setRemoveDevice] = useState<Device | null>(null);
+  const [copyValue, setCopyValue] = useState('');
   const mobileId = useRef(stored('relay3-device-id', '') || uuid()),
     [deviceName, setDeviceName] = useState(
       stored(
@@ -436,7 +449,7 @@ export default function App() {
           : /Android/.test(navigator.userAgent)
             ? 'Android'
             : '浏览器'),
-      pairingToken: code,
+      ...(/^\d{6}$/.test(code.trim()) ? { pairingCode: code.trim() } : { pairingToken: code }),
     });
     const next = {
       base,
@@ -501,16 +514,59 @@ export default function App() {
     }
   }
   async function copy(text: string) {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-    else {
-      const el = document.createElement('textarea');
-      el.value = text;
-      document.body.append(el);
-      el.select();
-      document.execCommand('copy');
-      el.remove();
+    if (window.relay3) {
+      await window.relay3.copyText(text);
+      inform('已复制');
+      return;
     }
-    inform('已复制');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('剪贴板不可用');
+      await navigator.clipboard.writeText(text);
+      inform('已复制');
+      return;
+    } catch {}
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.className = 'clipboard-fallback';
+    document.body.append(el);
+    el.focus();
+    el.select();
+    el.setSelectionRange(0, text.length);
+    let copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch {}
+    el.remove();
+    if (copied) inform('已复制');
+    else {
+      setCopyValue(text);
+      setModal('copy');
+    }
+  }
+  async function resetIdentity() {
+    for (const t of transfers) await window.relay3?.cancelDownload(t.id);
+    if (session && connected) await request(session.base, session.token, '/api/identity/reset', {});
+    disconnect();
+    setSavedHubs({});
+    save('relay3-hubs', {});
+    setPairing('');
+    history.replaceState(null, '', location.pathname);
+    if (desktop) {
+      const next = await management<AdminState>('/identity/reset', {});
+      setAdmin(next);
+      setBoot(await window.relay3!.bootstrap());
+    } else {
+      mobileId.current = uuid();
+      save('relay3-device-id', mobileId.current);
+      setRecords([]);
+      setTotal(0);
+    }
+    setFiles([]);
+    setRecipient('');
+    inform(
+      '设备身份已更换，请使用新的配对码重新连接' +
+        (remoteRevoked ? '' : '；原中转站不可达，可在其设备列表清除旧身份'),
+    );
   }
   const online = hub?.devices.filter((d) => d.id !== session?.id) ?? [];
   const transfers = hub?.transfers.filter((t) => active.includes(t.status)) ?? [];
@@ -557,7 +613,7 @@ export default function App() {
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
             </div>
           </div>
-          <span className="version">relay3 {boot?.version ?? '0.3.1'}</span>
+          <span className="version">relay3 {boot?.version ?? '0.3.2'}</span>
         </div>
       </aside>
       <div className="workspace">
@@ -968,6 +1024,32 @@ export default function App() {
                           ))}
                         </select>
                       </label>
+                      <div className="numeric-pairing">
+                        <div>
+                          <strong>一次性配对码</strong>
+                          <code>{admin.pairingCode}</code>
+                        </div>
+                        <div className="actions">
+                          <Button onClick={() => void run(() => copy(admin.pairingCode))}>
+                            复制数字
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              void run(async () => setAdmin(await management('/pairing/code', {})))
+                            }
+                          >
+                            生成新码
+                          </Button>
+                        </div>
+                        <small>
+                          {Date.now() >= admin.pairingCodeExpiresAt
+                            ? '配对码已过期，请生成新码'
+                            : `有效至 ${new Date(admin.pairingCodeExpiresAt).toLocaleTimeString('zh-CN', { hour12: false })}，成功配对后立即作废`}
+                        </small>
+                        <small>
+                          其他终端输入中转站地址与这 6 位数字即可连接，无需传递完整链接。
+                        </small>
+                      </div>
                       <div className="actions">
                         <Button
                           onClick={() =>
@@ -1041,6 +1123,17 @@ export default function App() {
                         </div>
                         <div className="device-record-actions">
                           <Badge status={d.online ? 'online' : 'offline'} />
+                          <Button
+                            kind="danger"
+                            title="清除设备"
+                            onClick={() => {
+                              setRemoveDevice(d);
+                              setModal('removeDevice');
+                            }}
+                          >
+                            <Trash2 size={16} />
+                            清除
+                          </Button>
                           {d.online && (
                             <Button
                               title="断开设备连接"
@@ -1481,6 +1574,16 @@ export default function App() {
                   </p>
                 </div>
               )}
+              <div className="identity-panel">
+                <h3>设备身份</h3>
+                <code>{boot?.deviceId ?? mobileId.current}</code>
+                <p>
+                  更换身份会断开当前连接、取消未完成传输，并清除本终端记住的配对凭证。设备名称、已接收文件和收发历史保留。
+                </p>
+                <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>
+                  更换设备身份
+                </Button>
+              </div>
               <div className="settings-note">
                 <h3>记录一直保留</h3>
                 <p>收发记录和连接历史不自动清理。清理中转缓存只释放文件空间。</p>
@@ -1518,11 +1621,12 @@ export default function App() {
             <label>
               配对码
               <input
+                aria-label="配对码"
                 value={pairing}
-                placeholder="扫码自动填入，或粘贴完整配对链接"
+                placeholder="输入 6 位一次性数字，或扫码自动填入"
                 onChange={(e) => setPairing(e.target.value)}
               />
-              <small>复制完整配对链接时，无需另外填写配对码。</small>
+              <small>输入中转站地址后，填写其页面显示的 6 位数字。完整配对链接无需另外填写。</small>
             </label>
             <Button type="submit" kind="primary" disabled={busy}>
               连接
@@ -1541,32 +1645,63 @@ export default function App() {
           )}
         </Modal>
       )}
-      {modal && modal !== 'connect' && (
+      {modal === 'copy' && (
+        <Modal title="手动复制" onClose={() => setModal(null)}>
+          <p>浏览器未允许自动复制，请长按或选中下面的内容复制。</p>
+          <textarea
+            aria-label="待复制内容"
+            readOnly
+            value={copyValue}
+            onFocus={(e) => e.target.select()}
+          />
+          <Button onClick={() => setModal(null)}>完成</Button>
+        </Modal>
+      )}
+      {modal && modal !== 'connect' && modal !== 'copy' && (
         <Modal
           title={
-            modal === 'stop'
-              ? '关闭中转站'
-              : modal === 'clearCache'
-                ? '清理所选文件'
-                : modal === 'clearDevices'
-                  ? '清理离线设备历史'
-                  : modal === 'clearReceived'
-                    ? '删除本机已接收文件'
-                    : '清理收发历史'
+            modal === 'resetIdentity'
+              ? '更换设备身份'
+              : modal === 'removeDevice'
+                ? `清除设备：${removeDevice?.name ?? ''}`
+                : modal === 'stop'
+                  ? '关闭中转站'
+                  : modal === 'clearCache'
+                    ? '清理所选文件'
+                    : modal === 'clearDevices'
+                      ? '清理离线设备历史'
+                      : modal === 'clearReceived'
+                        ? '删除本机已接收文件'
+                        : '清理收发历史'
           }
           onClose={() => setModal(null)}
         >
           <p>
-            {modal === 'stop'
-              ? '关闭后所有连接设备都会断开。正在传输的文件会中断，可重新发送或下载。'
-              : modal === 'clearCache'
-                ? '所选中转缓存将从磁盘删除。尚未接收的文件将无法继续下载，收发记录保留。'
-                : modal === 'clearReceived'
-                  ? '所选正式文件将从接收目录永久删除，无法撤销。收发历史仍然保留。'
-                  : modal === 'clearDevices'
-                    ? '删除离线且没有待传输文件的设备及其连接历史。这些设备下次连接需要重新配对，收发记录保留。'
-                    : '删除已结束且本机缓存已清理的收发记录，以及已结束的客户端历史。进行中的传输与仍有缓存的记录保留。此操作无法撤销。'}
+            {modal === 'resetIdentity'
+              ? '更换后需要重新配对。当前连接和未完成传输会终止，收发记录及已接收文件保留。'
+              : modal === 'removeDevice'
+                ? '清除该设备及连接历史，无论是否在线。在线设备会被断开，未完成传输会取消，旧凭证立即失效，收发记录和文件保留。'
+                : modal === 'stop'
+                  ? '关闭后所有连接设备都会断开。正在传输的文件会中断，可重新发送或下载。'
+                  : modal === 'clearCache'
+                    ? '所选中转缓存将从磁盘删除。尚未接收的文件将无法继续下载，收发记录保留。'
+                    : modal === 'clearReceived'
+                      ? '所选正式文件将从接收目录永久删除，无法撤销。收发历史仍然保留。'
+                      : modal === 'clearDevices'
+                        ? '按最近一次连接的时间清理符合条件的离线设备及其连接历史，在线设备保留。未完成传输将取消，收发记录与文件保留。'
+                        : '删除已结束且本机缓存已清理的收发记录，以及已结束的客户端历史。进行中的传输与仍有缓存的记录保留。此操作无法撤销。'}
           </p>
+          {modal === 'clearDevices' && (
+            <label>
+              最近连接时间早于
+              <select value={clearHours} onChange={(e) => setClearHours(Number(e.target.value))}>
+                <option value={1}>1 小时前</option>
+                <option value={24}>24 小时前</option>
+                <option value={168}>7 天前</option>
+                <option value={720}>30 天前</option>
+              </select>
+            </label>
+          )}
           <div className="dialog-actions">
             <Button onClick={() => setModal(null)}>取消</Button>
             <Button
@@ -1574,7 +1709,13 @@ export default function App() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  if (modal === 'stop') {
+                  if (modal === 'resetIdentity') {
+                    await resetIdentity();
+                  } else if (modal === 'removeDevice' && removeDevice) {
+                    await management('/device/delete', { id: removeDevice.id });
+                    await refreshAdmin();
+                    inform('设备及连接历史已清除，收发记录保留');
+                  } else if (modal === 'stop') {
                     const stopped = await management<AdminState>('/station/stop', { force: true });
                     setAdmin(stopped);
                     if (session?.stationId === stopped.settings.stationId) disconnect();
@@ -1591,7 +1732,7 @@ export default function App() {
                     setReceivedSelected([]);
                     inform(`已删除 ${r.deleted} 个本机接收文件，收发记录保留`);
                   } else if (modal === 'clearDevices') {
-                    const r = await management('/devices/clear', {});
+                    const r = await management('/devices/clear', { hours: clearHours });
                     inform(`已清理 ${r.deleted} 台离线设备的历史`);
                     await refreshAdmin();
                   } else {
@@ -1606,7 +1747,11 @@ export default function App() {
                 })
               }
             >
-              {modal === 'stop' ? '关闭中转站' : '确认清理'}
+              {modal === 'resetIdentity'
+                ? '确认更换'
+                : modal === 'stop'
+                  ? '关闭中转站'
+                  : '确认清理'}
             </Button>
           </div>
         </Modal>

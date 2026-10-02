@@ -8,6 +8,7 @@ import {
   nativeImage,
   net,
   session,
+  clipboard,
 } from 'electron';
 import { RelayService } from '../server/service';
 import { fileURLToPath } from 'node:url';
@@ -124,6 +125,11 @@ else {
           senderAllowed(event);
           return fn(...args);
         });
+      handler('clipboard-write', (text: string) => {
+        if (typeof text !== 'string' || text.length > 65536) throw new Error('复制内容无效');
+        clipboard.writeText(text);
+        return true;
+      });
       handler('bootstrap', () => ({
         controlUrl: service.controlUrl,
         adminToken: service.adminToken,

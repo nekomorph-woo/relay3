@@ -38,6 +38,7 @@ function bearer(r: FastifyRequest) {
 
 export class RelayService {
   store: Store;
+  closed = false;
   adminToken = token();
   pairingToken = token();
   pairingCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -59,14 +60,22 @@ export class RelayService {
   }
   revokeDevice(id: string) {
     this.cancelDeviceTransfers(id);
-    const c = this.clients.get(id);
-    if (c) {
-      this.clients.delete(id);
-      this.store.disconnect(c.connection);
-      c.socket.close(4001, '设备身份已失效');
-    }
+    this.detachDevice(id, 4001, '设备身份已失效');
     const d = this.store.device(id);
     if (d) this.store.saveDevice({ ...d, disconnectedAt: Date.now() }, digest(token()));
+    this.broadcast();
+  }
+  detachDevice(id: string, code: number, reason: string) {
+    const c = this.clients.get(id);
+    if (!c) return;
+    this.clients.delete(id);
+    this.store.disconnect(c.connection);
+    const d = this.store.device(id);
+    if (d) this.store.saveDevice({ ...d, disconnectedAt: Date.now() });
+    const timer = setTimeout(() => c.socket.terminate(), 500);
+    timer.unref();
+    c.socket.once('close', () => clearTimeout(timer));
+    c.socket.close(code, reason);
     this.broadcast();
   }
   forgetDevice(id: string) {
@@ -181,7 +190,12 @@ export class RelayService {
       dataDir: this.store.dataDir,
       databasePath: this.store.dbPath,
       sizes: this.store.sizes(),
-      devices: this.store.devices().map((d) => ({ ...d, online: this.clients.has(d.id) })),
+      devices: this.store.devices().map((d) => {
+        const latest = this.store.db
+          .prepare('SELECT MAX(connectedAt) AS time FROM connections WHERE deviceId=?')
+          .get(d.id) as { time: number | null };
+        return { ...d, lastSeen: latest.time ?? d.lastSeen, online: this.clients.has(d.id) };
+      }),
       connections: this.store.connections(),
     };
   }
@@ -301,6 +315,7 @@ export class RelayService {
     });
     app.post('/admin/pairing/rotate', async () => {
       this.pairingToken = token();
+      this.rotateCode();
       return this.status();
     });
     app.post('/admin/pairing/code', async () => {
@@ -320,7 +335,7 @@ export class RelayService {
     });
     app.post('/admin/device/disconnect', async (r) => {
       const id = (r.body as any)?.id;
-      this.clients.get(id)?.socket.close(4003, '管理员断开连接');
+      this.detachDevice(id, 4003, '管理员断开连接');
       return { ok: true };
     });
     app.get('/admin/cache', async () => this.cache());
@@ -537,6 +552,7 @@ export class RelayService {
       });
       socket.on('error', () => {});
       socket.on('close', () => {
+        if (this.closed) return;
         this.store.disconnect(connection);
         if (this.clients.get(d.id) === client) {
           this.clients.delete(d.id);
@@ -770,8 +786,10 @@ export class RelayService {
     try {
       await app.listen({ host: '0.0.0.0', port: this.store.settings.port });
       this.hub = app;
-    } catch (e) {
+    } catch (e: any) {
       await app.close();
+      if (e.code === 'EADDRINUSE')
+        fail(`端口 ${this.store.settings.port} 已被占用，请关闭其他中转站或在设置中更换端口`, 409);
       throw e;
     }
   }
@@ -800,6 +818,7 @@ export class RelayService {
     clearInterval(this.heartbeat);
     await this.stopHub(true);
     await this.control?.close();
+    this.closed = true;
     this.store.close();
   }
 }
