@@ -28,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { DeviceAvatar } from './components/DeviceAvatar';
 import { ChatHall } from './chat/ChatHall';
 import {
   request,
@@ -652,7 +653,10 @@ export default function App() {
         </nav>
         <div className="sidebar-bottom">
           <div className="device-self">
-            <Monitor size={18} />
+            <DeviceAvatar
+              id={boot?.deviceId ?? mobileId.current}
+              name={boot?.deviceName ?? deviceName}
+            />
             <div>
               <strong>{boot?.deviceName ?? deviceName}</strong>
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
@@ -1067,13 +1071,7 @@ export default function App() {
                   <div className="device-list">
                     {admin.devices.map((d) => (
                       <div className="device-record" key={d.id}>
-                        <span className="device-icon">
-                          {/iPhone|Android|手机/.test(d.platform) ? (
-                            <Smartphone size={23} />
-                          ) : (
-                            <Monitor size={23} />
-                          )}
-                        </span>
+                        <DeviceAvatar id={d.id} name={d.name} size={40} />
                         <div>
                           <strong>{d.name}</strong>
                           <p>
@@ -1541,7 +1539,17 @@ export default function App() {
                 </div>
               )}
               <div className="identity-panel">
-                <h3>设备身份</h3>
+                <div className="identity-heading">
+                  <DeviceAvatar
+                    id={boot?.deviceId ?? mobileId.current}
+                    name={boot?.deviceName ?? deviceName}
+                    size={40}
+                  />
+                  <div>
+                    <h3>设备身份</h3>
+                    <strong>{boot?.deviceName ?? deviceName}</strong>
+                  </div>
+                </div>
                 <code>{boot?.deviceId ?? mobileId.current}</code>
                 <p>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</p>
                 <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>

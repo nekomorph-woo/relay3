@@ -116,10 +116,30 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
   await desktop.getByRole('button', { name: '发送文字', exact: true }).click();
   await expect(mobile.locator('.chat-feed pre')).toHaveText(raw);
   expect(await mobile.evaluate(() => (window as any).bad)).toBeUndefined();
+  const senderAvatar = await desktop.locator('.chat-feed .bbs-avatar').first().innerHTML();
+  expect(senderAvatar).toContain('<svg');
+  expect(await mobile.locator('.chat-feed .bbs-avatar').first().innerHTML()).toBe(senderAvatar);
+  expect(await desktop.locator('.device-self .device-avatar').innerHTML()).toBe(senderAvatar);
+  expect(
+    await desktop
+      .locator('.chat-device')
+      .filter({ hasText: boot.deviceName })
+      .first()
+      .locator('.device-avatar')
+      .innerHTML(),
+  ).toBe(senderAvatar);
+
   await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '刷新设备信息' }).click();
   await expect(desktop.locator('.chat-device-group').last()).toContainText('授权手机');
   await desktop.getByRole('button', { name: '发送密文', exact: true }).click();
+  expect(
+    await desktop
+      .locator('.chat-recipients label')
+      .filter({ hasText: '本机，固定包含' })
+      .locator('.device-avatar')
+      .innerHTML(),
+  ).toBe(senderAvatar);
   await desktop
     .locator('.chat-recipients label')
     .filter({ hasText: '授权手机' })

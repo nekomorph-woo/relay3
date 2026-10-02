@@ -19,6 +19,7 @@ import { hiddenPhrase } from './phrases';
 import type { ChatIdentity, ChatMessage, ChatDevice } from './types';
 import { ChatCleanup } from './ChatCleanup';
 import { ChatDialog } from './ChatDialog';
+import { DeviceAvatar } from '../components/DeviceAvatar';
 interface Info {
   stationId: string;
   stationName: string;
@@ -351,6 +352,7 @@ export function ChatHall({
                       draftId.current = uuid();
                     }}
                   />
+                  <DeviceAvatar id={d.id} name={d.name} size={28} />
                   <span>
                     {d.name}
                     {d.id === session.id ? '（本机，固定包含）' : ''}
@@ -459,7 +461,12 @@ export function ChatHall({
                 .filter((d) => d.online === online)
                 .map((d) => (
                   <div className="chat-device" key={d.id}>
-                    <span className="chat-device-avatar">{d.name.slice(0, 1)}</span>
+                    <DeviceAvatar
+                      id={d.id}
+                      name={d.name}
+                      size={28}
+                      className="chat-device-avatar"
+                    />
                     <div>
                       <strong>{d.name}</strong>
                       <small>
@@ -483,9 +490,7 @@ export function ChatHall({
         key={m.id}
         data-message-id={m.id}
       >
-        <div className="bbs-avatar" aria-hidden="true">
-          {m.senderName.slice(0, 1)}
-        </div>
+        <DeviceAvatar id={m.senderId} name={m.senderName} className="bbs-avatar" />
         <div className="bbs-body">
           <header>
             <strong>{m.senderName}</strong>

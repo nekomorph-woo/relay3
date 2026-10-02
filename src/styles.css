@@ -2765,3 +2765,33 @@ main.native-page {
     padding: var(--space-md) 0;
   }
 }
+
+/* 设备与消息共用内存 SVG 头像。 */
+.device-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.device-avatar > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.own-message .device-avatar {
+  background: transparent;
+}
+.identity-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+.identity-heading h3 {
+  margin: 0 0 var(--space-xs);
+}
+.identity-heading strong {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
