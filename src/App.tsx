@@ -545,7 +545,14 @@ export default function App() {
   }
   async function resetIdentity() {
     for (const t of transfers) await window.relay3?.cancelDownload(t.id);
-    if (session && connected) await request(session.base, session.token, '/api/identity/reset', {});
+    let remoteRevoked = true;
+    if (session && connected) {
+      try {
+        await request(session.base, session.token, '/api/identity/reset', {});
+      } catch {
+        remoteRevoked = false;
+      }
+    }
     disconnect();
     setSavedHubs({});
     save('relay3-hubs', {});
