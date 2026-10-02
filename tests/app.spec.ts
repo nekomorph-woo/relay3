@@ -352,3 +352,66 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
   expect(await desktop.title()).toBe('Relay3');
   expect(errors).toEqual([]);
 });
+
+test('独立中转站名称、历史实时探测、侧栏用户与系统关于入口', async () => {
+  await desktop.getByRole('button', { name: '设置', exact: true }).click();
+  const device = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceName;
+  await desktop.getByLabel('中转站名称', { exact: true }).fill('客厅中转站');
+  await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
+  await expect(desktop.getByRole('status')).toContainText('设置已保存');
+  expect((await admin('/status')).settings.stationName).toBe('客厅中转站');
+  expect((await admin('/status')).settings.deviceName).toBe(device);
+  await expect(desktop.locator('.sidebar > .device-self')).toContainText(device);
+  await expect(desktop.locator('.brand')).toHaveCount(0);
+  await app.evaluate(({ app, shell }) => {
+    (globalThis as any).aboutCalls = 0;
+    (globalThis as any).githubUrl = '';
+    app.showAboutPanel = () => {
+      (globalThis as any).aboutCalls++;
+    };
+    shell.openExternal = async (url) => {
+      (globalThis as any).githubUrl = url;
+    };
+  });
+  await desktop.getByRole('button', { name: '关于 Relay3', exact: true }).click();
+  await expect.poll(() => app.evaluate(() => (globalThis as any).aboutCalls)).toBe(1);
+  await desktop.getByRole('button', { name: '项目 GitHub', exact: true }).click();
+  await expect
+    .poll(() => app.evaluate(() => (globalThis as any).githubUrl))
+    .toBe('https://github.com/nekomorph-woo/relay3');
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await expect(desktop.locator('.station-name')).toHaveText('客厅中转站');
+  await expect(desktop.getByLabel('选择局域网地址').locator('option').first()).toContainText(
+    '客厅中转站',
+  );
+  await desktop.getByRole('button', { name: '断开中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
+  const station = desktop.locator('.remembered-station').first();
+  await expect(station).toContainText('客厅中转站');
+  await expect(station).toContainText('可连接 · 0 台在线');
+  await desktop.screenshot({ path: 'test-results/v035-station-probe.png' });
+  // 同地址变成另一台站点时不能使用旧凭证自动重连。
+  await desktop.route('**/api/info', (route) =>
+    route.fulfill({
+      json: {
+        name: '另一台中转站',
+        stationId: 'different-station',
+        running: true,
+        onlineDevices: 2,
+      },
+    }),
+  );
+  await desktop.getByRole('button', { name: '重新探测中转站' }).click();
+  await expect(station).toContainText('地址已更换中转站');
+  await expect(station).toBeDisabled();
+  await desktop.unroute('**/api/info');
+  await desktop.getByRole('button', { name: '关闭', exact: true }).click();
+  await desktop.getByRole('button', { name: '关闭中转站', exact: true }).click();
+  await desktop.locator('dialog').getByRole('button', { name: '关闭中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
+  await expect(station).toContainText('未响应');
+  await desktop.getByRole('button', { name: '关闭', exact: true }).click();
+  await desktop.getByRole('button', { name: '设置', exact: true }).click();
+  await desktop.screenshot({ path: 'test-results/v035-settings.png' });
+  expect(errors).toEqual([]);
+});

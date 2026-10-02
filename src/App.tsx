@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   MessageSquare,
+  Info,
+  Github,
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
@@ -28,6 +30,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { SavedStations } from './components/SavedStations';
 import { DeviceAvatar } from './components/DeviceAvatar';
 import { ChatHall } from './chat/ChatHall';
 import {
@@ -167,6 +170,7 @@ export default function App() {
   }, [notice]);
   const [modal, setModal] = useState<
     | null
+    | 'about'
     | 'connect'
     | 'clearRecords'
     | 'clearDevices'
@@ -222,6 +226,7 @@ export default function App() {
     [filter, setFilter] = useState('all');
   const [form, setForm] = useState({
     deviceName: '',
+    stationName: '',
     port: 42830,
     retentionHours: 1,
     cacheDir: '',
@@ -289,6 +294,7 @@ export default function App() {
     if (admin) setForm({ ...admin.settings });
   }, [
     admin?.settings.deviceName,
+    admin?.settings.stationName,
     admin?.settings.port,
     admin?.settings.retentionHours,
     admin?.settings.cacheDir,
@@ -626,9 +632,15 @@ export default function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">
-          <img src="/relay3.png" alt="Relay3 图标" />
-          <span>Relay3</span>
+        <div className="device-self">
+          <DeviceAvatar
+            id={boot?.deviceId ?? mobileId.current}
+            name={boot?.deviceName ?? deviceName}
+          />
+          <div>
+            <strong>{boot?.deviceName ?? deviceName}</strong>
+            <small>{desktop ? '桌面终端' : '手机客户端'}</small>
+          </div>
         </div>
         <nav aria-label="主导航">
           {nav.map(({ id, label, icon: Icon }) => (
@@ -652,17 +664,33 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="device-self">
-            <DeviceAvatar
-              id={boot?.deviceId ?? mobileId.current}
-              name={boot?.deviceName ?? deviceName}
-            />
-            <div>
-              <strong>{boot?.deviceName ?? deviceName}</strong>
-              <small>{desktop ? '桌面终端' : '手机客户端'}</small>
-            </div>
+          <span className="version">Relay3 {boot?.version ?? '0.3.5'}</span>
+          <div className="sidebar-utilities">
+            <button
+              title="关于 Relay3"
+              aria-label="关于 Relay3"
+              onClick={() =>
+                desktop ? void run(() => window.relay3!.showAbout()) : setModal('about')
+              }
+            >
+              <Info size={17} />
+            </button>
+            <button
+              title="项目 GitHub"
+              aria-label="项目 GitHub"
+              onClick={() =>
+                desktop
+                  ? void run(() => window.relay3!.openGithub())
+                  : window.open(
+                      'https://github.com/nekomorph-woo/relay3',
+                      '_blank',
+                      'noopener,noreferrer',
+                    )
+              }
+            >
+              <Github size={17} />
+            </button>
           </div>
-          <span className="version">Relay3 {boot?.version ?? '0.3.4'}</span>
         </div>
       </aside>
       <div className="workspace">
@@ -933,6 +961,7 @@ export default function App() {
                     <Badge status={admin.running ? 'online' : 'offline'} />
                   </div>
                   <h2>{admin.running ? '中转站已开启' : '开启这台电脑的中转站'}</h2>
+                  <strong className="station-name">{admin.settings.stationName}</strong>
                   <p>让同一局域网的电脑和手机加入，互传文件与文字。</p>
                   <div className="actions">
                     <Button
@@ -994,7 +1023,9 @@ export default function App() {
                             ? admin.addresses
                             : [`http://127.0.0.1:${admin.settings.port}`]
                           ).map((a) => (
-                            <option key={a}>{a}</option>
+                            <option key={a} value={a}>
+                              {admin.settings.stationName} · {a}
+                            </option>
                           ))}
                         </select>
                       </label>
@@ -1508,19 +1539,34 @@ export default function App() {
                     });
                   }}
                 >
-                  <label>
-                    设备名称
-                    <input
-                      required
-                      maxLength={80}
-                      value={desktop ? form.deviceName : deviceName}
-                      onChange={(e) =>
-                        desktop
-                          ? setForm({ ...form, deviceName: e.target.value })
-                          : setDeviceName(e.target.value)
-                      }
-                    />
-                  </label>
+                  <div className={desktop ? 'form-grid' : 'device-name-field'}>
+                    <label>
+                      设备名称
+                      <input
+                        required
+                        maxLength={80}
+                        value={desktop ? form.deviceName : deviceName}
+                        onChange={(e) =>
+                          desktop
+                            ? setForm({ ...form, deviceName: e.target.value })
+                            : setDeviceName(e.target.value)
+                        }
+                      />
+                    </label>
+                    {desktop && (
+                      <label>
+                        中转站名称
+                        <input
+                          aria-label="中转站名称"
+                          required
+                          maxLength={80}
+                          value={form.stationName}
+                          onChange={(e) => setForm({ ...form, stationName: e.target.value })}
+                        />
+                        <small>供连接的设备识别，与本机设备名称独立。</small>
+                      </label>
+                    )}
+                  </div>
                   {desktop && (
                     <>
                       <div className="form-grid">
@@ -1636,15 +1682,11 @@ export default function App() {
             </Button>
           </form>
           {Object.keys(savedHubs).length > 0 && (
-            <div className="remembered">
-              <h3>连接过的中转站</h3>
-              {Object.values(savedHubs).map((s) => (
-                <Button key={s.base} onClick={() => void run(() => join(s.base, ''))}>
-                  {s.stationName}
-                  <small>{s.base}</small>
-                </Button>
-              ))}
-            </div>
+            <SavedStations
+              stations={Object.values(savedHubs)}
+              busy={busy}
+              onJoin={(base) => void run(() => join(base, ''))}
+            />
           )}
         </Modal>
       )}
@@ -1660,7 +1702,24 @@ export default function App() {
           <Button onClick={() => setModal(null)}>完成</Button>
         </Modal>
       )}
-      {modal && modal !== 'connect' && modal !== 'copy' && (
+      {modal === 'about' && (
+        <Modal title="关于 Relay3" onClose={() => setModal(null)}>
+          <div className="about-content">
+            <img src="/relay3.png" alt="Relay3" />
+            <h2>Relay3</h2>
+            <p>版本 {boot?.version ?? '0.3.5'}</p>
+            <p>PC、Mac 与手机之间的局域网文件互传与文字群聊。</p>
+            <a
+              href="https://github.com/nekomorph-woo/relay3"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub 项目
+            </a>
+          </div>
+        </Modal>
+      )}
+      {modal && modal !== 'about' && modal !== 'connect' && modal !== 'copy' && (
         <Modal
           title={
             modal === 'resetIdentity'

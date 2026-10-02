@@ -126,6 +126,8 @@ else {
         applicationName: 'Relay3',
         applicationVersion: app.getVersion(),
         iconPath: appIconPath,
+        website: 'https://github.com/nekomorph-woo/relay3',
+        copyright: 'PC · Mac · 手机',
       });
       if (process.platform === 'darwin') app.dock?.setIcon(nativeImage.createFromPath(appIconPath));
       const handler = (name: string, fn: (...args: any[]) => any) =>
@@ -133,6 +135,8 @@ else {
           senderAllowed(event);
           return fn(...args);
         });
+      handler('show-about', () => app.showAboutPanel());
+      handler('open-github', () => shell.openExternal('https://github.com/nekomorph-woo/relay3'));
       handler('clipboard-write', (text: string) => {
         if (typeof text !== 'string' || text.length > 1_048_576) throw new Error('复制内容无效');
         clipboard.writeText(text);

@@ -4,6 +4,8 @@ writeFileSync(
   `
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
+ showAbout: () => ipcRenderer.invoke('show-about'),
+ openGithub: () => ipcRenderer.invoke('open-github'),
  copyText: text => ipcRenderer.invoke('clipboard-write', text),
  chatIdentity: () => ipcRenderer.invoke('chat-identity'),
  bootstrap: () => ipcRenderer.invoke('bootstrap'),

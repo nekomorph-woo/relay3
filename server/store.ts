@@ -58,6 +58,7 @@ export interface Settings {
   stationId: string;
   deviceId: string;
   deviceName: string;
+  stationName: string;
   cacheDir: string;
   receiveDir: string;
   port: number;
@@ -102,11 +103,14 @@ export class Store {
           stationId: randomUUID(),
           deviceId: randomUUID(),
           deviceName: os.hostname().split('.')[0],
+          stationName: os.hostname().split('.')[0],
           cacheDir: path.join(dataDir, 'relay-cache'),
           receiveDir: receiveDir ?? path.join(os.homedir(), 'Downloads', 'relay3'),
           port: 42830,
           retentionHours: 1,
         };
+    // 老版本使用设备名称作为中转站名称，升级时沿用，之后独立保存。
+    if (!this.settings.stationName?.trim()) this.settings.stationName = this.settings.deviceName;
     this.saveSettings(this.settings);
     this.db
       .prepare('UPDATE connections SET disconnectedAt=? WHERE disconnectedAt IS NULL')

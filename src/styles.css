@@ -2968,3 +2968,127 @@ main.native-page {
   min-width: 0;
   padding: 0 var(--space-sm);
 }
+
+/* v0.3.5：设备身份作为侧栏入口，中转站历史展示实时探测。 */
+.sidebar > .device-self {
+  border-top: 0;
+  padding: var(--space-sm);
+  min-height: 44px;
+}
+.sidebar > .device-self strong {
+  overflow-wrap: anywhere;
+}
+.sidebar-bottom {
+  border-top: 1px solid var(--color-rule);
+  padding-top: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+.sidebar-bottom .version {
+  margin: 0;
+  padding: 0 var(--space-sm);
+}
+.sidebar-utilities {
+  display: flex;
+  gap: var(--space-xs);
+}
+.sidebar-utilities button,
+.station-probe-refresh {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-muted);
+}
+.sidebar-utilities button:hover,
+.station-probe-refresh:hover {
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+.station-name {
+  display: block;
+  margin: var(--space-sm) 0;
+  color: var(--color-accent);
+  overflow-wrap: anywhere;
+}
+.remembered .section-head {
+  margin-bottom: var(--space-sm);
+}
+.remembered .section-head h3 {
+  margin: 0;
+}
+.remembered .remembered-station {
+  height: auto;
+  min-height: 60px;
+  white-space: normal;
+  text-align: left;
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+.remembered-station-info {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.remembered-station-info strong {
+  display: block;
+}
+.remembered .remembered-station small {
+  margin: var(--space-xs) 0 0;
+  display: block;
+}
+.station-probe {
+  font-size: 11px;
+  color: var(--color-muted);
+  flex-shrink: 0;
+  max-width: 45%;
+}
+.station-probe.ready {
+  color: var(--color-accent);
+}
+.remembered > small {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: 11px;
+}
+.about-content {
+  text-align: center;
+}
+.about-content img {
+  width: 64px;
+  height: 64px;
+}
+@media (max-width: 600px) {
+  .sidebar > .device-self,
+  .sidebar > .sidebar-bottom {
+    display: none;
+  }
+  .remembered .remembered-station {
+    flex-wrap: wrap;
+  }
+  .station-probe {
+    max-width: 100%;
+  }
+}
+@media (min-width: 601px) and (max-width: 768px) {
+  .sidebar > .device-self {
+    justify-content: center;
+    padding: 0;
+  }
+  .sidebar > .device-self > div,
+  .sidebar-bottom .version {
+    display: none;
+  }
+  .sidebar-bottom {
+    justify-content: center;
+  }
+  .sidebar-utilities {
+    flex-direction: column;
+  }
+}

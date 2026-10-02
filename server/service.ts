@@ -150,7 +150,7 @@ export class RelayService {
   state(d: Device) {
     return {
       stationId: this.store.settings.stationId,
-      stationName: this.store.settings.deviceName,
+      stationName: this.store.settings.stationName,
       chatLatestId: this.chat.latest(),
       chatUnread: this.chat.unread(d.id),
       self: d,
@@ -495,6 +495,15 @@ export class RelayService {
     app.post('/admin/settings', async (r) => {
       const b = r.body as any;
       const s = { ...this.store.settings };
+      if (b.stationName !== undefined) {
+        if (
+          typeof b.stationName !== 'string' ||
+          !b.stationName.trim() ||
+          b.stationName.trim().length > 80
+        )
+          fail('中转站名称需为 1–80 个字符');
+        s.stationName = cleanName(b.stationName).slice(0, 80);
+      }
       if (b.deviceName !== undefined) s.deviceName = cleanName(b.deviceName).slice(0, 80);
       if (b.port !== undefined && b.port !== s.port) {
         if (this.hub) fail('修改端口前请关闭中转站', 409);
@@ -548,6 +557,7 @@ export class RelayService {
         if (t.status === 'completed' && !t.cleanedAt && t.completedAt)
           this.update(t, { expiresAt: t.completedAt + s.retentionHours * 3600_000 });
       this.cleanup();
+      this.broadcast();
       return this.status();
     });
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -564,8 +574,11 @@ export class RelayService {
     );
     registerChat(app, this, false);
     app.get('/api/info', async () => ({
-      name: this.store.settings.deviceName,
+      app: 'Relay3',
+      name: this.store.settings.stationName,
       stationId: this.store.settings.stationId,
+      running: true,
+      onlineDevices: this.clients.size,
     }));
     app.post('/api/join', async (r) => {
       const b = r.body as any;

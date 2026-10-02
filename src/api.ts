@@ -29,6 +29,7 @@ export interface AdminState {
     stationId: string;
     deviceId: string;
     deviceName: string;
+    stationName: string;
     cacheDir: string;
     receiveDir: string;
     port: number;
@@ -67,6 +68,8 @@ declare global {
   interface Window {
     relay3?: {
       chatIdentity(): Promise<import('./chat/types').ChatIdentity>;
+      showAbout(): Promise<void>;
+      openGithub(): Promise<void>;
       copyText(text: string): Promise<boolean>;
       bootstrap(): Promise<Bootstrap>;
       pickDirectory(): Promise<string | null>;

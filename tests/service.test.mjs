@@ -451,3 +451,44 @@ test('本机管理权限恢复旧身份，重连凭证跨重启保存且不能�
     await f.close();
   }
 });
+
+test('中转站独立名称持久保存、旧版迁移与无凭证探测在线信息', async () => {
+  const f = await fixture();
+  let restarted;
+  try {
+    const originalDevice = f.service.store.settings.deviceName;
+    const originalStationId = f.service.store.settings.stationId;
+    const update = (body) =>
+      f.call('/admin/settings', f.service.adminToken, body, 'POST', f.service.controlUrl);
+    assert.equal((await update({ stationName: '客厅中转站' })).status, 200);
+    assert.equal(f.service.store.settings.deviceName, originalDevice);
+    await f.join('手机在线');
+    const info = (await f.call('/api/info')).data;
+    assert.equal(info.name, '客厅中转站');
+    assert.equal(info.stationId, originalStationId);
+    assert.equal(info.running, true);
+    assert.equal(info.onlineDevices, 1);
+    assert.deepEqual(
+      Object.keys(info).sort(),
+      ['app', 'name', 'onlineDevices', 'running', 'stationId'].sort(),
+    );
+    for (const stationName of ['', '   ', 'x'.repeat(81), 123])
+      assert.equal((await update({ stationName })).status, 400);
+    await f.service.close();
+    restarted = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(restarted.store.settings.stationName, '客厅中转站');
+    assert.equal(restarted.store.settings.deviceName, originalDevice);
+    const legacy = { ...restarted.store.settings, deviceName: '旧版设备' };
+    delete legacy.stationName;
+    restarted.store.db
+      .prepare('UPDATE settings SET value=? WHERE key=?')
+      .run(JSON.stringify(legacy), 'main');
+    await restarted.close();
+    restarted = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(restarted.store.settings.stationName, '旧版设备');
+    assert.equal(restarted.store.settings.stationId, originalStationId);
+  } finally {
+    await restarted?.close();
+    await f.close();
+  }
+});

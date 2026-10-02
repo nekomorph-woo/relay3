@@ -175,7 +175,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     const d = service.device(r);
     return {
       stationId: service.store.settings.stationId,
-      stationName: service.store.settings.deviceName,
+      stationName: service.store.settings.stationName,
       latestId: chat.latest(),
       cursor: chat.cursor(d.id),
       unread: chat.unread(d.id),
