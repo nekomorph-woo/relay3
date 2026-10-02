@@ -88,6 +88,8 @@ Windows 同样采用透明外边距与圆角底板，ICO 的 16–256 像素图�
 ### v0.3.4 安装包 SHA-256
 
 ```text
-902fd1eb572fac7e87d07435e0033baa3d28d88b8982a23ac449b184cf8a8a22  relay3-0.3.4-mac-arm64.dmg
-cc787d48a416c2237277d739513e2ef3a4b0aed441b0336fa328d97eeebee78d  relay3-0.3.4-win-x64.exe
+90b1267462125fafde98c6e9623e62661407807e0adb4e508128ded5abe1f0a4  relay3-0.3.4-mac-arm64.dmg
+dc7f18e4eb25cdec03f5df8d3ad9336da099514efc217a85757a8095b964e009  relay3-0.3.4-win-x64.exe
 ```
+
+- 群聊布局微调：标题仅保留名称，在线数量并入中转站信息；普通输入区压缩，将更多高度分配给消息列表。两端安装包已同步重建。
