@@ -1,6 +1,6 @@
 # relay3
 
-PC、Mac、手机之间的局域网文件互传工具。桌面端使用 Electron，手机通过浏览器连接，不需要安装客户端。所有前端资源随应用附带，运行时不依赖外网。
+PC、Mac、手机之间的局域网文件互传工具。桌面版支持 Windows 10 及更新版本、macOS 13 及更新版本。桌面端使用 Electron，手机通过浏览器连接，不需要安装客户端。所有前端资源随应用附带，运行时不依赖外网。
 
 ## 使用
 
@@ -70,7 +70,7 @@ npm run dist:win       # Windows x64 安装程序，建议在 Windows 构建
 npm run pack          # 本机未压缩应用目录
 ```
 
-产物位于 `release/`。GitHub Actions 提供 macOS / Windows 原生构建与检查，当前没有配置远端仓库或发布。
+产物位于 `release/`。GitHub Actions 提供 macOS / Windows 原生构建与检查，当前没有配置远端仓库或发布。Windows 安装包使用支持 Apple Silicon 的 NSIS 3.12 工具集，跨平台打包不要求安装 Rosetta。
 
 安装包只包含编译产物和运行依赖，分别打包 CPU 架构，使用 ASAR 与最大压缩，保留中文和英文语言资源。不附带额外 Node 运行时、外部字体、开发依赖或 source map。SQLite 使用 Electron 的 Node 内置模块，无需打包原生 SQLite 插件。
 

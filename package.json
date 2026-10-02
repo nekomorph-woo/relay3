@@ -100,7 +100,10 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     },
-    "artifactName": "relay3-${version}-${os}-${arch}.${ext}"
+    "artifactName": "relay3-${version}-${os}-${arch}.${ext}",
+    "toolsets": {
+      "nsis": "1.2.1"
+    }
   },
   "overrides": {
     "esbuild": "^0.28.1"
