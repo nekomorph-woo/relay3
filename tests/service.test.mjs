@@ -267,3 +267,98 @@ test('重启后保留记录与设备凭证，未完成下载恢复为可接收�
     rmSync(f.dir, { recursive: true, force: true });
   }
 });
+
+test('六位配对码一次性消费、过期、刷新和错误尝试限速', async () => {
+  const f = await fixture();
+  const joinCode = (code) =>
+    f.call('/api/join', '', { id: randomUUID(), name: '数字配对', pairingCode: code });
+  try {
+    const code = f.service.pairingCode;
+    assert.match(code, /^\d{6}$/);
+    assert.equal((await joinCode('wrong')).status, 401);
+    const results = await Promise.all([joinCode(code), joinCode(code)]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 401]);
+    assert.notEqual(f.service.pairingCode, code);
+    f.service.pairingCodeExpiresAt = Date.now() - 1;
+    assert.equal((await joinCode(f.service.pairingCode)).status, 401);
+    const refreshed = await f.call(
+      '/admin/pairing/code',
+      f.service.adminToken,
+      {},
+      'POST',
+      f.service.controlUrl,
+    );
+    assert.equal(refreshed.status, 200);
+    assert.ok(refreshed.data.pairingCodeExpiresAt > Date.now());
+    assert.equal((await joinCode(refreshed.data.pairingCode)).status, 200);
+    for (let i = 0; i < 10; i++) await joinCode('000000');
+    assert.equal((await joinCode(f.service.pairingCode)).status, 429);
+  } finally {
+    await f.close();
+  }
+});
+
+test('按最近连接时间清理离线设备，在线设备可单独清除且撤销凭证', async () => {
+  const f = await fixture();
+  try {
+    const sender = await f.join('Mac'),
+      receiver = await f.join('手机');
+    const pending = await f.call('/api/transfers', sender.token, {
+      name: '未完成.txt',
+      size: 10,
+      recipientId: receiver.self.id,
+    });
+    const admin = (route, body) =>
+      f.call(route, f.service.adminToken, body, 'POST', f.service.controlUrl);
+    assert.equal((await admin('/admin/devices/clear', { hours: 2 })).status, 400);
+    assert.equal((await admin('/admin/devices/clear', { hours: 1 })).data.deleted, 0);
+    await admin('/admin/device/disconnect', { id: receiver.self.id });
+    await wait(40);
+    f.service.store.db
+      .prepare('UPDATE connections SET connectedAt=? WHERE deviceId=?')
+      .run(Date.now() - 2 * 3600_000, receiver.self.id);
+    assert.equal((await admin('/admin/devices/clear', { hours: 24 })).data.deleted, 0);
+    assert.equal((await admin('/admin/devices/clear', { hours: 1 })).data.deleted, 1);
+    assert.equal(f.service.store.transfer(pending.data.id).status, 'cancelled');
+    assert.equal((await f.call('/api/state', receiver.token)).status, 401);
+    assert.ok(f.service.store.device(sender.self.id));
+    assert.equal((await admin('/admin/device/delete', { id: sender.self.id })).status, 200);
+    await wait(40);
+    assert.equal(f.service.clients.size, 0);
+    assert.equal(f.service.store.devices().length, 0);
+    assert.equal(f.service.store.connections().length, 0);
+    assert.equal(f.service.store.records().length, 1);
+    assert.equal((await f.call('/api/state', sender.token)).status, 401);
+  } finally {
+    await f.close();
+  }
+});
+
+test('终端更换身份撤销旧凭证，桌面身份持久化且保留连接历史', async () => {
+  const f = await fixture();
+  try {
+    const mobile = await f.join('手机');
+    assert.equal((await f.call('/api/identity/reset', mobile.token, {})).status, 200);
+    await wait(40);
+    assert.equal((await f.call('/api/state', mobile.token)).status, 401);
+    assert.ok(f.service.store.device(mobile.self.id));
+    assert.equal(f.service.clients.size, 0);
+    const old = f.service.store.settings.deviceId;
+    const reset = await f.call(
+      '/admin/identity/reset',
+      f.service.adminToken,
+      {},
+      'POST',
+      f.service.controlUrl,
+    );
+    assert.equal(reset.status, 200);
+    assert.notEqual(reset.data.settings.deviceId, old);
+    assert.equal(f.service.store.connections().length, 1);
+    const persisted = JSON.parse(
+      f.service.store.db.prepare("SELECT value FROM settings WHERE key='main'").get().value,
+    );
+    assert.equal(persisted.deviceId, reset.data.settings.deviceId);
+  } finally {
+    await f.close();
+  }
+});

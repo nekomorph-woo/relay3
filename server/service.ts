@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import staticFiles from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { WebSocket } from 'ws';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, randomInt } from 'node:crypto';
 import {
   createReadStream,
   createWriteStream,
@@ -40,6 +40,40 @@ export class RelayService {
   store: Store;
   adminToken = token();
   pairingToken = token();
+  pairingCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  pairingCodeExpiresAt = Date.now() + 5 * 60_000;
+  pairingAttempts = new Map<string, { count: number; until: number }>();
+  rotateCode() {
+    const previous = this.pairingCode;
+    do {
+      this.pairingCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    } while (this.pairingCode === previous);
+    this.pairingCodeExpiresAt = Date.now() + 5 * 60_000;
+  }
+  cancelDeviceTransfers(id: string) {
+    for (const t of this.store.transfers())
+      if (activeStatuses.includes(t.status) && (t.senderId === id || t.recipientId === id)) {
+        this.update(t, { status: 'cancelled', error: '设备身份已更换或已被清除' });
+        this.streams.get(t.id)?.abort();
+      }
+  }
+  revokeDevice(id: string) {
+    this.cancelDeviceTransfers(id);
+    const c = this.clients.get(id);
+    if (c) {
+      this.clients.delete(id);
+      this.store.disconnect(c.connection);
+      c.socket.close(4001, '设备身份已失效');
+    }
+    const d = this.store.device(id);
+    if (d) this.store.saveDevice({ ...d, disconnectedAt: Date.now() }, digest(token()));
+    this.broadcast();
+  }
+  forgetDevice(id: string) {
+    this.revokeDevice(id);
+    this.store.db.prepare('DELETE FROM connections WHERE deviceId=?').run(id);
+    this.store.db.prepare('DELETE FROM devices WHERE id=?').run(id);
+  }
   hub: FastifyInstance | null = null;
   control: FastifyInstance | null = null;
   controlUrl = '';
@@ -141,6 +175,8 @@ export class RelayService {
       running: !!this.hub,
       addresses: this.addresses(),
       pairingToken: this.pairingToken,
+      pairingCode: this.pairingCode,
+      pairingCodeExpiresAt: this.pairingCodeExpiresAt,
       settings: this.store.settings,
       dataDir: this.store.dataDir,
       databasePath: this.store.dbPath,
@@ -267,6 +303,21 @@ export class RelayService {
       this.pairingToken = token();
       return this.status();
     });
+    app.post('/admin/pairing/code', async () => {
+      this.rotateCode();
+      return this.status();
+    });
+    app.post('/admin/identity/reset', async () => {
+      this.revokeDevice(this.store.settings.deviceId);
+      this.store.saveSettings({ ...this.store.settings, deviceId: randomUUID() });
+      return this.status();
+    });
+    app.post('/admin/device/delete', async (r) => {
+      const id = (r.body as any)?.id;
+      if (typeof id !== 'string' || !this.store.device(id)) fail('设备不存在', 404);
+      this.forgetDevice(id);
+      return { ok: true };
+    });
     app.post('/admin/device/disconnect', async (r) => {
       const id = (r.body as any)?.id;
       this.clients.get(id)?.socket.close(4003, '管理员断开连接');
@@ -330,23 +381,20 @@ export class RelayService {
       return { ok: true };
     });
     app.post('/admin/records/clear', async () => ({ deleted: this.store.clearRecords() }));
-    app.post('/admin/devices/clear', async () => {
+    app.post('/admin/devices/clear', async (r) => {
+      const hours = (r.body as any)?.hours;
+      if (![1, 24, 168, 720].includes(hours)) fail('请选择有效的清理时间范围');
+      const before = Date.now() - hours * 60 * 60_000;
       let deleted = 0;
-      for (const d of this.store.devices())
-        if (
-          !this.clients.has(d.id) &&
-          !this.store
-            .transfers()
-            .some(
-              (t) =>
-                activeStatuses.includes(t.status) &&
-                (t.senderId === d.id || t.recipientId === d.id),
-            )
-        ) {
-          this.store.db.prepare('DELETE FROM connections WHERE deviceId=?').run(d.id);
-          this.store.db.prepare('DELETE FROM devices WHERE id=?').run(d.id);
+      for (const d of this.store.devices()) {
+        const latest = this.store.db
+          .prepare('SELECT MAX(connectedAt) AS time FROM connections WHERE deviceId=?')
+          .get(d.id) as { time: number | null };
+        if (!this.clients.has(d.id) && (latest.time ?? d.lastSeen) < before) {
+          this.forgetDevice(d.id);
           deleted++;
         }
+      }
       return { deleted };
     });
     app.post('/admin/database/compact', async () => {
@@ -435,11 +483,26 @@ export class RelayService {
         fail('设备标识无效');
       const previous = this.store.device(b.id);
       const authed = this.store.auth(digest(bearer(r)));
-      if (b.pairingToken !== this.pairingToken && authed?.id !== b.id)
-        fail('配对码无效，请扫描中转站当前二维码', 401);
+      const usingCode = typeof b.pairingCode === 'string';
+      if (usingCode) {
+        const now = Date.now();
+        for (const [ip, attempt] of this.pairingAttempts)
+          if (attempt.until < now) this.pairingAttempts.delete(ip);
+        const attempt = this.pairingAttempts.get(r.ip) ?? { count: 0, until: now + 60_000 };
+        if (attempt.count >= 10) fail('尝试过于频繁，请稍后再试', 429);
+        attempt.count++;
+        this.pairingAttempts.set(r.ip, attempt);
+        if (
+          !/^\d{6}$/.test(b.pairingCode) ||
+          b.pairingCode !== this.pairingCode ||
+          now >= this.pairingCodeExpiresAt
+        )
+          fail('一次性配对码无效或已过期，请使用中转站当前的 6 位数字', 401);
+      } else if (b.pairingToken !== this.pairingToken && authed?.id !== b.id)
+        fail('配对凭证无效，请重新扫码或输入一次性配对码', 401);
       if (previous && authed?.id !== b.id)
         fail('该设备已配对，请使用原连接凭证或重置设备身份', 409);
-      const secret = authed ? bearer(r) : token();
+      const secret = authed?.id === b.id ? bearer(r) : token();
       const d: Device = {
         id: b.id,
         name: cleanName(b.name).slice(0, 80),
@@ -450,6 +513,7 @@ export class RelayService {
         ip: r.ip,
       };
       this.store.saveDevice(d, digest(secret));
+      if (usingCode) this.rotateCode();
       return { token: secret, ...this.state(d) };
     });
     app.get('/api/ws', { websocket: true }, (socket, r) => {
@@ -476,11 +540,13 @@ export class RelayService {
         this.store.disconnect(connection);
         if (this.clients.get(d.id) === client) {
           this.clients.delete(d.id);
-          this.store.saveDevice({
-            ...this.store.device(d.id)!,
-            lastSeen: Date.now(),
-            disconnectedAt: Date.now(),
-          });
+          const current = this.store.device(d.id);
+          if (current)
+            this.store.saveDevice({
+              ...current,
+              lastSeen: Date.now(),
+              disconnectedAt: Date.now(),
+            });
           this.broadcast();
         }
       });
@@ -508,6 +574,10 @@ export class RelayService {
       );
       const offset = Math.max(0, Number(q.offset) || 0);
       return { items: visible.slice(offset, offset + 50), total: visible.length };
+    });
+    app.post('/api/identity/reset', async (r) => {
+      this.revokeDevice(this.device(r).id);
+      return { ok: true };
     });
     app.post('/api/device', async (r) => {
       const d = this.device(r);
