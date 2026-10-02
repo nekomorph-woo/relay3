@@ -258,7 +258,13 @@ export default function App() {
     if (desktop)
       window
         .relay3!.bootstrap()
-        .then(setBoot)
+        .then((next) => {
+          const migrated = Object.fromEntries(
+            Object.entries(savedHubs).filter(([, s]) => s.id === next.deviceId),
+          );
+          setSavedHubs({ ...migrated, ...next.savedHubs });
+          setBoot(next);
+        })
         .catch((e) => inform(e.message, true));
     else {
       const old = stored<Session | null>('relay3-session', null);
@@ -440,9 +446,9 @@ export default function App() {
     if (u.protocol !== 'http:') throw new Error('请输入局域网 HTTP 地址');
     const base = u.origin,
       code = new URLSearchParams(u.hash.slice(1)).get('pair') ?? codeInput;
-    const old = savedHubs[base];
     const id = boot?.deviceId ?? mobileId.current;
-    const result = await request<any>(base, old?.token ?? '', '/api/join', {
+    const old = savedHubs[base]?.id === id ? savedHubs[base] : undefined;
+    const body = {
       id,
       name: deviceName,
       platform:
@@ -452,8 +458,28 @@ export default function App() {
           : /Android/.test(navigator.userAgent)
             ? 'Android'
             : '浏览器'),
-      ...(/^\d{6}$/.test(code.trim()) ? { pairingCode: code.trim() } : { pairingToken: code }),
-    });
+    };
+    const pairingBody = /^\d{6}$/.test(code.trim())
+      ? { pairingCode: code.trim() }
+      : { pairingToken: code };
+    let result;
+    try {
+      result = await request<any>(base, old?.token ?? '', '/api/join', {
+        ...body,
+        ...(old?.token ? {} : pairingBody),
+      });
+    } catch (e: any) {
+      if (!old?.token || e.status !== 401 || !code.trim()) throw e;
+      result = await request<any>(base, '', '/api/join', { ...body, ...pairingBody });
+    }
+    await rememberConnection(base, result);
+  }
+  async function joinLocal() {
+    const result = await management('/client/join-local', {});
+    await rememberConnection(result.base, result);
+  }
+  async function rememberConnection(base: string, result: any) {
+    const id = boot?.deviceId ?? mobileId.current;
     const next = {
       base,
       token: result.token,
@@ -461,6 +487,7 @@ export default function App() {
       stationId: result.stationId,
       stationName: result.stationName,
     };
+    if (desktop) await management('/client/session', next);
     setSession(next);
     setHub(result);
     save('relay3-session', next);
@@ -1011,14 +1038,7 @@ export default function App() {
                       )}
                     </Button>
                     {admin.running && (
-                      <Button
-                        disabled={busy}
-                        onClick={() =>
-                          void run(() =>
-                            join(`http://127.0.0.1:${admin.settings.port}`, admin.pairingToken),
-                          )
-                        }
-                      >
+                      <Button disabled={busy} onClick={() => void run(() => joinLocal())}>
                         <Link size={17} />
                         本机加入
                       </Button>

@@ -162,6 +162,7 @@ else {
         deviceName: service.store.settings.deviceName,
         platform: process.platform === 'darwin' ? 'Mac' : 'PC',
         version: app.getVersion(),
+        savedHubs: service.store.clientSessions(),
       }));
       handler('pick-directory', async () => {
         const result = await dialog.showOpenDialog(window!, {

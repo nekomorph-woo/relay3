@@ -21,7 +21,7 @@ import { Transform, type Readable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
 import { ChatStore, registerChat } from './chat';
-import { Store, type Device, type Transfer, activeStatuses } from './store';
+import { Store, type Device, type Transfer, type SavedConnection, activeStatuses } from './store';
 
 const token = () => randomBytes(32).toString('hex');
 const digest = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -312,6 +312,63 @@ export class RelayService {
     });
     registerChat(app, this, true);
     app.get('/admin/status', async () => this.status());
+    app.post('/admin/client/session', async (r) => {
+      const b = r.body as SavedConnection;
+      let url: URL;
+      try {
+        url = new URL(b?.base);
+      } catch {
+        fail('中转站地址无效');
+      }
+      if (
+        url!.protocol !== 'http:' ||
+        url!.origin !== b.base ||
+        b.id !== this.store.settings.deviceId ||
+        typeof b.token !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(b.token) ||
+        typeof b.stationId !== 'string' ||
+        !/^[a-zA-Z0-9-]{16,80}$/.test(b.stationId) ||
+        typeof b.stationName !== 'string' ||
+        b.stationName.length > 240
+      )
+        fail('客户端连接凭证无效');
+      this.store.saveClientSession({
+        base: b.base,
+        id: b.id,
+        token: b.token,
+        stationId: b.stationId,
+        stationName: b.stationName,
+      });
+      return { ok: true };
+    });
+    app.post('/admin/client/join-local', async () => {
+      if (!this.hub) fail('请先开启本机中转站', 409);
+      const settings = this.store.settings;
+      const base = `http://127.0.0.1:${(this.hub!.server.address() as any).port}`;
+      const saved = this.store.clientSessions()[base];
+      const valid = saved && this.store.auth(digest(saved.token))?.id === settings.deviceId;
+      const secret = valid ? saved.token : token();
+      const previous = this.store.device(settings.deviceId);
+      const d: Device = {
+        id: settings.deviceId,
+        name: settings.deviceName,
+        platform: process.platform === 'darwin' ? 'Mac' : 'PC',
+        firstSeen: previous?.firstSeen ?? Date.now(),
+        lastSeen: Date.now(),
+        disconnectedAt: previous?.disconnectedAt ?? Date.now(),
+        ip: '127.0.0.1',
+      };
+      this.store.saveDevice(d, digest(secret));
+      const state = this.state(d);
+      this.store.saveClientSession({
+        base,
+        token: secret,
+        id: d.id,
+        stationId: state.stationId,
+        stationName: state.stationName,
+      });
+      return { base, token: secret, ...state };
+    });
     app.post('/admin/station/start', async () => {
       await this.startHub();
       return this.status();
@@ -331,6 +388,7 @@ export class RelayService {
     });
     app.post('/admin/identity/reset', async () => {
       this.revokeDevice(this.store.settings.deviceId);
+      this.store.clearClientSessions();
       this.store.saveSettings({ ...this.store.settings, deviceId: randomUUID() });
       return this.status();
     });

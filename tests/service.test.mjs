@@ -362,3 +362,92 @@ test('终端更换身份撤销旧凭证，桌面身份持久化且保留连接�
     await f.close();
   }
 });
+
+test('本机管理权限恢复旧身份，重连凭证跨重启保存且不能从局域网抢占身份', async () => {
+  const f = await fixture();
+  let restarted;
+  try {
+    const id = f.service.store.settings.deviceId;
+    const original = await f.call('/api/join', '', {
+      id,
+      name: '本机',
+      pairingToken: f.service.pairingToken,
+    });
+    assert.equal(original.status, 200);
+    const firstSeen = f.service.store.device(id).firstSeen;
+    const local = () =>
+      f.call('/admin/client/join-local', f.service.adminToken, {}, 'POST', f.service.controlUrl);
+    assert.equal(
+      (await f.call('/admin/client/join-local', '', {}, 'POST', f.service.controlUrl)).status,
+      401,
+    );
+    const recovery = await local();
+    assert.equal(recovery.status, 200);
+    assert.equal(recovery.data.self.id, id);
+    assert.equal(f.service.store.device(id).firstSeen, firstSeen);
+    assert.equal((await local()).data.token, recovery.data.token);
+    assert.equal(
+      (
+        await f.call('/api/join', '', {
+          id,
+          name: '假冒本机',
+          pairingToken: f.service.pairingToken,
+        })
+      ).status,
+      409,
+    );
+    const remote = {
+      base: 'http://192.168.5.10:42830',
+      id,
+      token: 'a'.repeat(64),
+      stationId: randomUUID(),
+      stationName: '远端',
+    };
+    assert.equal(
+      (
+        await f.call(
+          '/admin/client/session',
+          f.service.adminToken,
+          remote,
+          'POST',
+          f.service.controlUrl,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await f.call(
+          '/admin/client/session',
+          f.service.adminToken,
+          { ...remote, id: randomUUID() },
+          'POST',
+          f.service.controlUrl,
+        )
+      ).status,
+      400,
+    );
+    await f.service.close();
+    restarted = new RelayService(f.dir, path.resolve('dist'));
+    restarted.store.settings.port = 0;
+    await restarted.startControl();
+    await restarted.startHub();
+    const saved = restarted.store.clientSessions();
+    assert.equal(saved[recovery.data.base].token, recovery.data.token);
+    assert.deepEqual(saved[remote.base], remote);
+    const recovered = await f.call(
+      '/admin/client/join-local',
+      restarted.adminToken,
+      {},
+      'POST',
+      restarted.controlUrl,
+    );
+    assert.equal(recovered.status, 200);
+    assert.equal(recovered.data.self.id, id);
+    await f.call('/admin/identity/reset', restarted.adminToken, {}, 'POST', restarted.controlUrl);
+    assert.deepEqual(restarted.store.clientSessions(), {});
+  } finally {
+    await restarted?.close();
+    await f.close();
+  }
+});

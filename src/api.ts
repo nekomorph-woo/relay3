@@ -1,12 +1,6 @@
-import type { Device, Transfer } from '../server/store';
+import type { Device, Transfer, SavedConnection } from '../server/store';
 export type { Device, Transfer };
-export interface Session {
-  base: string;
-  token: string;
-  id: string;
-  stationId: string;
-  stationName: string;
-}
+export type Session = SavedConnection;
 export interface HubState {
   chatLatestId?: number;
   chatUnread?: number;
@@ -23,6 +17,7 @@ export interface Bootstrap {
   deviceName: string;
   platform: string;
   version: string;
+  savedHubs: Record<string, Session>;
 }
 export interface AdminState {
   running: boolean;
@@ -104,7 +99,8 @@ export async function request<T = any>(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error ?? '请求失败');
+  if (!response.ok)
+    throw Object.assign(new Error(data.error ?? '请求失败'), { status: response.status });
   return data;
 }
 export function uuid() {

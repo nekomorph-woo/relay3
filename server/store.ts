@@ -4,6 +4,13 @@ import { mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+export interface SavedConnection {
+  base: string;
+  token: string;
+  id: string;
+  stationId: string;
+  stationName: string;
+}
 export type Status =
   | 'pending'
   | 'accepted'
@@ -78,6 +85,7 @@ export class Store {
     this.db = new DatabaseSync(this.dbPath);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS client_sessions (base TEXT PRIMARY KEY, deviceId TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, secret TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS transfers (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS received_files (id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -115,6 +123,20 @@ export class Store {
   saveSettings(s: Settings) {
     this.settings = s;
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run('main', JSON.stringify(s));
+  }
+  clientSessions(): Record<string, SavedConnection> {
+    const rows = this.db
+      .prepare('SELECT base,data FROM client_sessions WHERE deviceId=?')
+      .all(this.settings.deviceId) as { base: string; data: string }[];
+    return Object.fromEntries(rows.map((row) => [row.base, JSON.parse(row.data)]));
+  }
+  saveClientSession(session: SavedConnection) {
+    this.db
+      .prepare('INSERT OR REPLACE INTO client_sessions VALUES (?,?,?)')
+      .run(session.base, session.id, JSON.stringify(session));
+  }
+  clearClientSessions() {
+    this.db.exec('DELETE FROM client_sessions');
   }
   devices(): Device[] {
     return (this.db.prepare('SELECT data FROM devices').all() as { data: string }[]).map((r) =>
