@@ -3,7 +3,7 @@ import pngToIco from 'png-to-ico';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 mkdirSync('build/icon.iconset', { recursive: true });
-const source = 'design/branding/relay3-icon-v2.png';
+const source = 'design/branding/relay3-icon-v3.png';
 const buffers = [];
 for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
   const image = await sharp(source).resize(size, size).png().toBuffer();

@@ -32,3 +32,12 @@
 Windows 与 Intel Mac 的实际安装和运行、iOS Safari 与 Android 实机的锁屏及后台传输行为。手机响应式与双向收发已在 Chromium 的移动视口中验证，不能替代真实 Safari 或手机系统行为验证。安装包尚未配置商业代码签名和 Apple 公证。
 
 界面截图保存在 `design/qa/`。
+
+## v0.3.1 更新
+
+- 采用用户选定的 02 号 r3 合字，更新网页、Dock、Mac 与 Windows 安装程序图标。
+- 页面底部品牌文字移除，标题保留 relay3，左下角显示 relay3 0.3.1。
+- 发布目标仅为 Mac Apple Silicon 与 Windows x64。
+- TypeScript 检查、生产构建与 4 组服务测试通过。
+- 安装包仍未商业签名或 Apple 公证；Windows 尚未实机运行验证。
+- 安装包通过 GitHub Release 提供，上传验证后删除本地安装包。

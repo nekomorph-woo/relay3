@@ -557,7 +557,7 @@ export default function App() {
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
             </div>
           </div>
-          <span className="version">relay3 {boot?.version ?? '1.0.0'} · 局域网互传</span>
+          <span className="version">relay3 {boot?.version ?? '0.3.1'}</span>
         </div>
       </aside>
       <div className="workspace">
@@ -1487,9 +1487,6 @@ export default function App() {
               </div>
             </section>
           )}
-          <footer>
-            relay3 <span>PC · Mac · 手机</span>
-          </footer>
         </main>
       </div>
       {modal === 'connect' && (

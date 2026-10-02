@@ -116,7 +116,6 @@ else {
         applicationName: 'relay3',
         applicationVersion: app.getVersion(),
         iconPath: path.join(dirname, '../dist/relay3.png'),
-        copyright: '局域网文件互传',
       });
       if (process.platform === 'darwin')
         app.dock?.setIcon(nativeImage.createFromPath(path.join(dirname, '../dist/relay3.png')));
