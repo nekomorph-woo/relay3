@@ -429,7 +429,10 @@ export function ChatHall({
           <h2>中转站信息</h2>
           <strong>{info?.stationName ?? session.stationName}</strong>
           <p>{session.base}</p>
-          <p>{connected ? '已连接' : '已断开 · 设备信息暂未更新'}</p>
+          <p>
+            {connected ? '已连接' : '已断开 · 设备信息暂未更新'} ·{' '}
+            {devices.filter((d) => d.online).length} 台在线
+          </p>
           <small>文字历史保存在中转站 SQLite 中</small>
         </section>
         <section className="panel">
@@ -543,11 +546,6 @@ export function ChatHall({
           <header className="chat-room-head">
             <div>
               <h1>群聊大厅</h1>
-              <p>
-                <span className={`dot ${connected ? 'on' : ''}`} />
-                {info?.stationName ?? session.stationName} ·{' '}
-                {devices.filter((d) => d.online).length} 台在线
-              </p>
             </div>
             <button
               className="chat-details-action"

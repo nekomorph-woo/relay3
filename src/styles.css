@@ -2178,3 +2178,19 @@ main.chat-workspace {
 .chat-remark-editor .chat-remark-input {
   padding-top: var(--space-sm);
 }
+
+/* 群聊标题只保留名称，将高度让给消息列表。 */
+.chat-room-head {
+  padding-top: var(--space-md);
+  padding-bottom: var(--space-md);
+}
+.chat-main > .chat-composer textarea {
+  height: 56px;
+  min-height: 48px;
+}
+@media (max-width: 600px) {
+  .chat-main > .chat-composer textarea {
+    height: 48px;
+    min-height: 40px;
+  }
+}
