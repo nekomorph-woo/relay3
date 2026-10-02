@@ -72,7 +72,11 @@
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.utilities",
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "electronLanguages": [
+        "en",
+        "zh_CN"
+      ]
     },
     "dmg": {
       "title": "relay3",
@@ -82,7 +86,11 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "electronLanguages": [
+        "en-US",
+        "zh-CN"
+      ]
     },
     "nsis": {
       "oneClick": false,

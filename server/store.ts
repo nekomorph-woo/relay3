@@ -6,7 +6,7 @@ import os from 'node:os';
 
 export type Status = 'pending' | 'accepted' | 'uploading' | 'ready' | 'downloading' | 'awaiting-confirm' | 'completed' | 'rejected' | 'cancelled' | 'failed';
 export interface Device { id: string; name: string; platform: string; firstSeen: number; lastSeen: number; disconnectedAt: number | null; ip: string; }
-export interface Transfer { id: string; stationId: string; name: string; size: number; senderId: string; senderName: string; recipientId: string; recipientName: string; status: Status; createdAt: number; startedAt: number | null; completedAt: number | null; duration: number | null; uploaded: number; downloaded: number; sha256: string | null; expiresAt: number | null; cleanedAt: number | null; error: string | null; }
+export interface Transfer { id: string; stationId: string; name: string; size: number; senderId: string; senderName: string; recipientId: string; recipientName: string; status: Status; createdAt: number; startedAt: number | null; completedAt: number | null; duration: number | null; uploaded: number; downloaded: number; uploadDuration?: number; downloadDuration?: number; sha256: string | null; expiresAt: number | null; cleanedAt: number | null; error: string | null; }
 export interface Settings { stationId: string; deviceId: string; deviceName: string; cacheDir: string; receiveDir: string; port: number; retentionHours: number; }
 export const activeStatuses: Status[] = ['pending', 'accepted', 'uploading', 'ready', 'downloading', 'awaiting-confirm'];
 
@@ -22,6 +22,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, secret TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS transfers (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS received_files (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS remote_records (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS connections (id INTEGER PRIMARY KEY, deviceId TEXT NOT NULL, name TEXT NOT NULL, ip TEXT NOT NULL, connectedAt INTEGER NOT NULL, disconnectedAt INTEGER);
       CREATE INDEX IF NOT EXISTS connections_device ON connections(deviceId);
@@ -46,6 +47,8 @@ export class Store {
   transfers(): Transfer[] { return (this.db.prepare('SELECT data FROM transfers ORDER BY json_extract(data,\'$.createdAt\') DESC').all() as { data: string }[]).map(r => JSON.parse(r.data)); }
   saveTransfer(t: Transfer) { this.db.prepare('INSERT OR REPLACE INTO transfers VALUES (?,?)').run(t.id, JSON.stringify(t)); }
   remember(records: Transfer[]) { const stmt = this.db.prepare('INSERT OR REPLACE INTO remote_records VALUES (?,?)'); this.db.exec('BEGIN'); try { for (const t of records) if (t.stationId !== this.settings.stationId && (t.senderId === this.settings.deviceId || t.recipientId === this.settings.deviceId)) stmt.run(`${t.stationId}:${t.id}`, JSON.stringify(t)); this.db.exec('COMMIT'); } catch(e) { this.db.exec('ROLLBACK'); throw e; } }
+  received(): {id:string;name:string;path:string;size:number;receivedAt:number}[] { return (this.db.prepare('SELECT data FROM received_files').all() as {data:string}[]).map(r=>JSON.parse(r.data)).sort((a,b)=>b.receivedAt-a.receivedAt); }
+  saveReceived(file:{id:string;name:string;path:string;size:number;receivedAt:number}) { this.db.prepare('INSERT OR REPLACE INTO received_files VALUES (?,?)').run(file.id,JSON.stringify(file)); }
   records(): Transfer[] { return [...this.transfers(), ...(this.db.prepare('SELECT data FROM remote_records').all() as { data: string }[]).map(r => JSON.parse(r.data))].sort((a,b) => b.createdAt-a.createdAt); }
   connection(d: Device) { return Number(this.db.prepare('INSERT INTO connections(deviceId,name,ip,connectedAt) VALUES (?,?,?,?)').run(d.id, d.name, d.ip, Date.now()).lastInsertRowid); }
   disconnect(connection: number) { this.db.prepare('UPDATE connections SET disconnectedAt=? WHERE id=?').run(Date.now(), connection); }

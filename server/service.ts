@@ -64,9 +64,9 @@ export class RelayService {
   }
   cleanup(now=Date.now()) { for (const t of this.store.transfers()) if (t.status==='completed' && t.expiresAt!==null && t.expiresAt<=now && !t.cleanedAt && !this.streams.has(t.id)) this.removeCache(t.id); }
   async base() {
-    const app=Fastify({ logger:false, bodyLimit:1_048_576, requestTimeout:0 });
-    await app.register(cors,{ origin: (origin,cb) => { if (!origin) return cb(null,true); try { const u=new URL(origin); cb(null,u.protocol==='http:' && (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname) || /^192\.168\./.test(u.hostname) || /^10\./.test(u.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname))); } catch { cb(null,false); } } });
-    app.addHook('onSend',async (_r,reply,payload)=> { reply.header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer').header('Cache-Control','no-store'); return payload; });
+    const app=Fastify({ logger:false, bodyLimit:1_048_576, requestTimeout:0, forceCloseConnections:true });
+    await app.register(cors,{ methods:['GET','HEAD','POST','PUT','OPTIONS'], origin: (origin,cb) => { if (!origin) return cb(null,true); try { const u=new URL(origin); cb(null,u.protocol==='http:' && (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname) || /^192\.168\./.test(u.hostname) || /^10\./.test(u.hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname))); } catch { cb(null,false); } } });
+    app.addHook('onSend',async (_r,reply,payload)=> { reply.header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src http: ws:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'").header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer').header('Cache-Control','no-store'); return payload; });
     app.setErrorHandler((err:any,_r,reply)=>reply.code(err.statusCode ?? 500).send({ error:err.statusCode ? err.message : '操作失败，请检查磁盘空间和文件权限' }));
     if (existsSync(this.webRoot)) await app.register(staticFiles,{ root:this.webRoot, index:'index.html' });
     return app;
@@ -81,7 +81,9 @@ export class RelayService {
     app.post('/admin/device/disconnect',async r=>{ const id=(r.body as any)?.id; this.clients.get(id)?.socket.close(4003,'管理员断开连接'); return {ok:true}; });
     app.get('/admin/cache',async ()=>this.cache());
     app.post('/admin/cache/delete',async r=>{ const ids=(r.body as any)?.ids; if(!Array.isArray(ids)||ids.length>1000) fail('清理列表无效'); const results=ids.map(id=>{ try{ this.removeCache(String(id)); return {id,ok:true}; }catch(e:any){return {id,ok:false,error:e.message};} }); return {results}; });
-    app.get('/admin/records',async r=>{ const q=r.query as any; const all=this.store.records().filter(t=>!q.search || [t.name,t.senderName,t.recipientName].some(x=>x.toLowerCase().includes(String(q.search).toLowerCase()))); const offset=Math.max(0,Number(q.offset)||0); return {items:all.slice(offset,offset+50),total:all.length}; });
+    app.get('/admin/received',async()=>({entries:this.store.received().map(f=>({...f,exists:existsSync(f.path)}))}));
+    app.post('/admin/received/delete',async r=>{const ids=(r.body as any)?.ids;if(!Array.isArray(ids)||ids.length>1000)fail('清理列表无效');let deleted=0;for(const f of this.store.received())if(ids.includes(f.id)){rmSync(f.path,{force:true});this.store.db.prepare('DELETE FROM received_files WHERE id=?').run(f.id);deleted++;}return {deleted};});
+    app.get('/admin/records',async r=>{ const q=r.query as any; const all=this.store.records().filter(t=>!q.search || [t.name,t.senderName,t.recipientName].some(x=>x.toLowerCase().includes(String(q.search).toLowerCase()))); const visible=all.filter(t=>!q.direction||q.direction==='all'||(q.direction==='send'?t.senderId===this.store.settings.deviceId:t.recipientId===this.store.settings.deviceId));const offset=Math.max(0,Number(q.offset)||0); return {items:visible.slice(offset,offset+50),total:visible.length}; });
     app.post('/admin/remember',async r=>{ const records=(r.body as any)?.records; if(!Array.isArray(records)||records.length>500) fail('记录无效'); this.store.remember(records); return {ok:true}; });
     app.post('/admin/records/clear',async ()=>({deleted:this.store.clearRecords()}));
     app.post('/admin/devices/clear',async ()=>{ let deleted=0; for(const d of this.store.devices()) if(!this.clients.has(d.id) && !this.store.transfers().some(t=>activeStatuses.includes(t.status)&&(t.senderId===d.id||t.recipientId===d.id))) { this.store.db.prepare('DELETE FROM connections WHERE deviceId=?').run(d.id); this.store.db.prepare('DELETE FROM devices WHERE id=?').run(d.id); deleted++; } return {deleted}; });
@@ -136,7 +138,7 @@ export class RelayService {
       this.broadcast();
     });
     app.get('/api/state',async r=>this.state(this.device(r)));
-    app.get('/api/history',async r=>{ const d=this.device(r); const q=r.query as any; const all=this.store.transfers().filter(t=>t.senderId===d.id||t.recipientId===d.id).filter(t=>!q.search||[t.name,t.senderName,t.recipientName].some(x=>x.toLowerCase().includes(String(q.search).toLowerCase()))); const offset=Math.max(0,Number(q.offset)||0);return {items:all.slice(offset,offset+50),total:all.length}; });
+    app.get('/api/history',async r=>{ const d=this.device(r); const q=r.query as any; const all=this.store.transfers().filter(t=>t.senderId===d.id||t.recipientId===d.id).filter(t=>!q.search||[t.name,t.senderName,t.recipientName].some(x=>x.toLowerCase().includes(String(q.search).toLowerCase()))); const visible=all.filter(t=>!q.direction||q.direction==='all'||(q.direction==='send'?t.senderId===d.id:t.recipientId===d.id));const offset=Math.max(0,Number(q.offset)||0);return {items:visible.slice(offset,offset+50),total:visible.length}; });
     app.post('/api/device',async r=>{const d=this.device(r);const next={...d,name:cleanName((r.body as any)?.name).slice(0,80)};this.store.saveDevice(next);this.broadcast();return next;});
     app.post('/api/transfers',async r=>{
       const d=this.device(r),b=r.body as any; if(!this.clients.has(d.id)) fail('设备尚未连接，请等待连接建立',409);
@@ -153,7 +155,7 @@ export class RelayService {
       if(d.id!==t.recipientId) fail('只有接收设备可以操作',403);
       if(p.action==='accept'&&t.status==='pending') return this.update(t,{status:'accepted'});
       if(p.action==='reject'&&t.status==='pending') return this.update(t,{status:'rejected',error:'接收设备拒绝了文件'});
-      if(p.action==='complete'&&t.status==='awaiting-confirm') {const now=Date.now();return this.update(t,{status:'completed',completedAt:now,duration:now-(t.startedAt??t.createdAt),expiresAt:now+this.store.settings.retentionHours*3600_000});}
+      if(p.action==='complete'&&t.status==='awaiting-confirm') {const now=Date.now();return this.update(t,{status:'completed',completedAt:now,duration:(t.uploadDuration??0)+(t.downloadDuration??0),expiresAt:now+this.store.settings.retentionHours*3600_000});}
       fail('传输状态已变化，请刷新后重试',409);
     });
     app.put('/api/transfers/:id/upload',async (r,reply)=>{
@@ -168,7 +170,7 @@ export class RelayService {
         await pipeline(r.body as Readable,meter,createWriteStream(this.file(t,true),{flags:'wx'}),{signal:controller.signal});
         if(bytes!==t.size) throw new Error('文件大小不匹配，请重新发送');
         if(this.getTransfer(t.id).status==='cancelled') fail('传输已取消',409);
-        renameSync(this.file(t,true),this.file(t));this.update(t,{status:'ready',uploaded:bytes,sha256:hash.digest('hex')});return {ok:true};
+        renameSync(this.file(t,true),this.file(t));this.update(t,{status:'ready',uploaded:bytes,uploadDuration:Date.now()-(this.getTransfer(t.id).startedAt??Date.now()),sha256:hash.digest('hex')});return {ok:true};
       } catch(e:any) {const current=this.getTransfer(t.id);if(current.status!=='cancelled')this.update(t,{status:'failed',uploaded:bytes,error:e.name==='AbortError'?'上传已中断':e.message}); if(!reply.sent) return reply.code(409).send({error:this.getTransfer(t.id).error??'上传中断'});}
       finally{this.streams.delete(t.id);}
     });
@@ -178,10 +180,10 @@ export class RelayService {
       if(!['ready','awaiting-confirm'].includes(t.status)||t.cleanedAt||this.streams.has(t.id))fail('文件暂不可下载',409);
       if(!existsSync(this.file(t)))fail('缓存文件已不存在',404);
       const controller=new AbortController();this.streams.set(t.id,controller);this.update(t,{status:'downloading',downloaded:0});
-      const stream=createReadStream(this.file(t));let bytes=0,lastSave=0;
+      const downloadStarted=Date.now();const stream=createReadStream(this.file(t));let bytes=0,lastSave=0;
       stream.on('data',chunk=>{bytes+=chunk.length;if(Date.now()-lastSave>300){lastSave=Date.now();this.update(t,{downloaded:bytes},false);}});
       controller.signal.addEventListener('abort',()=>stream.destroy(new Error('下载已取消')),{once:true});
-      const finish=(success:boolean)=>{if(!this.streams.has(t.id))return;this.streams.delete(t.id);const current=this.getTransfer(t.id);if(current.status==='cancelled')return;this.update(t,{status:success?'awaiting-confirm':'ready',downloaded:bytes,error:success?null:'下载中断，可重新接收'});};
+      const finish=(success:boolean)=>{if(!this.streams.has(t.id))return;this.streams.delete(t.id);const current=this.getTransfer(t.id);if(current.status==='cancelled')return;this.update(t,{status:success?'awaiting-confirm':'ready',downloaded:bytes,...(success?{downloadDuration:Date.now()-downloadStarted}:{}),error:success?null:'下载中断，可重新接收'});};
       reply.raw.on('finish',()=>finish(bytes===t.size));reply.raw.on('close',()=>{if(!reply.raw.writableFinished){stream.destroy();finish(false);}});stream.on('error',()=>finish(false));
       reply.header('Content-Type','application/octet-stream').header('Content-Length',t.size).header('Content-Disposition',`attachment; filename="relay3-file"; filename*=UTF-8''${encodeURIComponent(t.name).replace(/'/g,'%27')}`);
       return reply.send(stream);

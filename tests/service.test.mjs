@@ -23,6 +23,7 @@ test('身份校验、接收确认、流式传输、完整性校验和完成后�
  assert.equal((await f.call('/api/join','',{id:randomUUID(),name:'陌生设备',pairingToken:'wrong'})).status,401);
  assert.equal((await f.call('/admin/status','',undefined,'GET',f.service.controlUrl)).status,401);
  assert.equal((await f.call('/admin/status',f.service.adminToken,undefined,'GET',f.base)).status,404);
+ const preflight=await fetch(f.base+'/api/transfers/example/upload',{method:'OPTIONS',headers:{Origin:f.service.controlUrl,'Access-Control-Request-Method':'PUT','Access-Control-Request-Headers':'authorization,content-type'}});assert.equal(preflight.status,204);assert.match(preflight.headers.get('access-control-allow-methods'),/PUT/);
  const content=Buffer.alloc(3*1024*1024,7);const {t}=await f.transfer(sender,receiver,content);
  assert.equal(f.service.getTransfer(t.id).sha256,createHash('sha256').update(content).digest('hex'));
  assert.equal((await f.call(`/api/transfers/${t.id}/complete`,other.token,{})).status,403);
