@@ -26,6 +26,7 @@ export interface Device {
   id: string;
   name: string;
   platform: string;
+  platformSource?: string;
   firstSeen: number;
   lastSeen: number;
   disconnectedAt: number | null;

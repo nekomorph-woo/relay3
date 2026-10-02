@@ -530,7 +530,10 @@ test('平台历史快照、旧表迁移与设备清理后消息标记保留', as
     ).data;
     assert.equal(transfer.senderPlatform, 'PC');
     assert.equal(transfer.recipientPlatform, 'Android');
-    assert.equal(f.service.store.connections()[0].platform, 'PC');
+    assert.equal(
+      f.service.store.connections().find((c) => c.deviceId === sender.self.id).platform,
+      'PC',
+    );
     f.service.store.db.exec(
       'ALTER TABLE connections DROP COLUMN platform; ALTER TABLE chat_messages DROP COLUMN senderPlatform;',
     );
@@ -539,7 +542,10 @@ test('平台历史快照、旧表迁移与设备清理后消息标记保留', as
     f.service.store.saveTransfer(transfer);
     await f.service.close();
     reopened = new RelayService(f.dir, path.resolve('dist'));
-    assert.equal(reopened.store.connections()[0].platform, 'PC');
+    assert.equal(
+      reopened.store.connections().find((c) => c.deviceId === sender.self.id).platform,
+      'PC',
+    );
     assert.equal(
       reopened.chat.read(
         reopened.chat.db.prepare('SELECT * FROM chat_messages WHERE id=?').get(message.id),
@@ -565,6 +571,45 @@ test('平台历史快照、旧表迁移与设备清理后消息标记保留', as
     assert.equal(reopened.store.transfer(transfer.id).senderPlatform, 'PC');
   } finally {
     await reopened?.close();
+    await f.close();
+  }
+});
+
+test('平台 UA 回退、识别来源持久化及重连更新', async () => {
+  const f = await fixture();
+  try {
+    const id = randomUUID();
+    const response = await f.service.hub.inject({
+      method: 'POST',
+      url: '/api/join',
+      headers: { 'user-agent': 'Mozilla/5.0 (Linux; Android 15)' },
+      payload: { id, name: '手机', pairingToken: f.service.pairingToken },
+    });
+    assert.equal(response.statusCode, 200);
+    const joined = response.json();
+    assert.equal(joined.self.platform, 'Android');
+    assert.equal(joined.self.platformSource, 'user-agent');
+    const firstSeen = joined.self.firstSeen;
+    const updated = await f.call('/api/join', joined.token, {
+      id,
+      name: 'iPad',
+      platform: 'iOS',
+      platformSource: 'browser-platform',
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.self.firstSeen, firstSeen);
+    const persisted = JSON.parse(
+      f.service.store.db.prepare('SELECT data FROM devices WHERE id=?').get(id).data,
+    );
+    assert.equal(persisted.platform, 'iOS');
+    assert.equal(persisted.platformSource, 'browser-platform');
+    const fallback = await f.call('/api/join', joined.token, {
+      id,
+      name: 'iPad',
+      platform: 'Unknown',
+    });
+    assert.equal(fallback.data.self.platform, 'iOS');
+  } finally {
     await f.close();
   }
 });

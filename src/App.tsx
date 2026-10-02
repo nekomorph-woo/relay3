@@ -30,6 +30,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { browserPlatformInfo } from './devicePlatform';
 import { DeviceTag, browserPlatform } from './components/DeviceTag';
 import { DeviceSelect } from './components/DeviceSelect';
 import { SavedStations } from './components/SavedStations';
@@ -465,7 +466,12 @@ export default function App() {
     const body = {
       id,
       name: deviceName,
-      platform: boot?.platform ?? browserPlatform(),
+      ...(boot
+        ? { platform: boot.platform, platformSource: 'native' }
+        : {
+            platform: browserPlatformInfo().platform,
+            platformSource: browserPlatformInfo().source,
+          }),
     };
     const pairingBody = /^\d{6}$/.test(code.trim())
       ? { pairingCode: code.trim() }

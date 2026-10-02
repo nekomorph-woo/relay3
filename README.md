@@ -1,6 +1,6 @@
 # Relay3
 
-当前源码版本：0.3.5（等待确认发布）。最新已发布安装包：[GitHub Release](https://github.com/nekomorph-woo/relay3/releases/tag/v0.3.4)，提供 Mac Apple Silicon 与 Windows x64。
+当前版本：0.3.5。安装包：[GitHub Release](https://github.com/nekomorph-woo/relay3/releases/tag/v0.3.5)，提供 Mac Apple Silicon 与 Windows x64。
 
 PC、Mac、手机之间的局域网文件互传与文字群聊工具。桌面版支持 Windows 10 及更新版本、macOS 13 及更新版本。桌面端使用 Electron，手机通过浏览器连接，不需要安装客户端。所有前端资源随应用附带，运行时不依赖外网。
 
@@ -125,3 +125,7 @@ npm run pack          # 本机未压缩应用目录
 打开连接弹窗会请求历史站点的 `/api/info`，不携带连接凭证、不自动加入，单个请求最多等待 3.5 秒，同期最多 4 个请求，可手动刷新。成功显示当前站名和在线设备数；未响应不能区分中转站关闭、网络隔离或地址变化。旧版缺少在线数时说明数据不可用，同地址的中转站身份变化时要求重新配对。
 
 桌面侧栏以本机头像和名称开头，底部“关于”打开系统标准面板，GitHub 图标用默认浏览器打开项目主页。
+
+## 设备平台标记
+
+设备、群聊和收发历史统一展示 PC、Mac、安卓手机、iOS手机图标，悬停可查看名称。桌面通过 Electron 读取系统平台；手机网页结合浏览器平台信息、User-Agent 和触控能力识别，兼容 iPadOS 桌面浏览模式。识别结果与来源保存在中转站设备记录中，重连更新；消息、传输和连接历史保留平台快照。无法可靠判断时显示未知设备。

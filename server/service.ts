@@ -1,3 +1,4 @@
+import { detectPlatform, normalizePlatform } from '../src/devicePlatform';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import staticFiles from '@fastify/static';
@@ -360,6 +361,7 @@ export class RelayService {
         id: settings.deviceId,
         name: settings.deviceName,
         platform: process.platform === 'darwin' ? 'Mac' : 'PC',
+        platformSource: 'native',
         firstSeen: previous?.firstSeen ?? Date.now(),
         lastSeen: Date.now(),
         disconnectedAt: previous?.disconnectedAt ?? Date.now(),
@@ -606,10 +608,29 @@ export class RelayService {
       if (previous && authed?.id !== b.id)
         fail('该设备已配对，请使用原连接凭证或重置设备身份', 409);
       const secret = authed?.id === b.id ? bearer(r) : token();
+      const reportedPlatform = normalizePlatform(
+        typeof b.platform === 'string' ? b.platform : undefined,
+      );
+      const inferred = detectPlatform({ userAgent: r.headers['user-agent'] ?? '' });
+      const platform =
+        reportedPlatform !== 'Unknown'
+          ? reportedPlatform
+          : inferred.platform !== 'Unknown'
+            ? inferred.platform
+            : (previous?.platform ?? 'Unknown');
+      const platformSource =
+        reportedPlatform !== 'Unknown'
+          ? ['native', 'browser-platform', 'user-agent'].includes(b.platformSource)
+            ? b.platformSource
+            : 'user-agent'
+          : inferred.platform !== 'Unknown'
+            ? inferred.source
+            : (previous?.platformSource ?? 'unknown');
       const d: Device = {
         id: b.id,
         name: cleanName(b.name).slice(0, 80),
-        platform: String(b.platform ?? '手机').slice(0, 30),
+        platform,
+        platformSource,
         firstSeen: previous?.firstSeen ?? Date.now(),
         lastSeen: Date.now(),
         disconnectedAt: previous?.disconnectedAt ?? Date.now(),
