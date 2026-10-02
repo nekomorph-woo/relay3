@@ -8,6 +8,8 @@ export interface Session {
   stationName: string;
 }
 export interface HubState {
+  chatLatestId?: number;
+  chatUnread?: number;
   stationId: string;
   stationName: string;
   self: Device;
@@ -69,6 +71,7 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      chatIdentity(): Promise<import('./chat/types').ChatIdentity>;
       copyText(text: string): Promise<boolean>;
       bootstrap(): Promise<Bootstrap>;
       pickDirectory(): Promise<string | null>;

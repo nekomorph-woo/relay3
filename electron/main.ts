@@ -10,10 +10,20 @@ import {
   session,
   clipboard,
 } from 'electron';
+import { generateIdentity, validIdentity } from '../src/chat/crypto';
 import { RelayService } from '../server/service';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createWriteStream, existsSync, mkdirSync, linkSync, rmSync, constants } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  linkSync,
+  rmSync,
+  constants,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
@@ -70,6 +80,24 @@ async function createWindow() {
     if (new URL(url).origin !== new URL(process.env.RELAY3_DEV_URL ?? service.controlUrl).origin)
       e.preventDefault();
   });
+  window.setMenuBarVisibility(false);
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt) return;
+    const key = input.key.toLowerCase();
+    const actions: Record<string, () => void> = {
+      c: () => window?.webContents.copy(),
+      v: () => window?.webContents.paste(),
+      x: () => window?.webContents.cut(),
+      a: () => window?.webContents.selectAll(),
+      z: () => (input.shift ? window?.webContents.redo() : window?.webContents.undo()),
+      y: () => window?.webContents.redo(),
+      q: () => app.quit(),
+    };
+    if (actions[key]) {
+      event.preventDefault();
+      actions[key]();
+    }
+  });
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, cb) => cb(false));
   await window.loadURL(process.env.RELAY3_DEV_URL ?? service.controlUrl);
   window.on('closed', () => (window = null));
@@ -93,27 +121,7 @@ else {
       await session.defaultSession.setProxy({ mode: 'direct' });
       await service.startControl();
       if (process.env.RELAY3_TEST_HUB === '1') await service.startHub();
-      Menu.setApplicationMenu(
-        Menu.buildFromTemplate([
-          {
-            label: 'relay3',
-            submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }],
-          },
-          {
-            label: '编辑',
-            submenu: [
-              { role: 'undo' },
-              { role: 'redo' },
-              { type: 'separator' },
-              { role: 'cut' },
-              { role: 'copy' },
-              { role: 'paste' },
-              { role: 'selectAll' },
-            ],
-          },
-          { label: '窗口', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }] },
-        ]),
-      );
+      Menu.setApplicationMenu(null);
       app.setAboutPanelOptions({
         applicationName: 'relay3',
         applicationVersion: app.getVersion(),
@@ -126,9 +134,26 @@ else {
           return fn(...args);
         });
       handler('clipboard-write', (text: string) => {
-        if (typeof text !== 'string' || text.length > 65536) throw new Error('复制内容无效');
+        if (typeof text !== 'string' || text.length > 1_048_576) throw new Error('复制内容无效');
         clipboard.writeText(text);
         return true;
+      });
+      handler('chat-identity', () => {
+        const folder = path.join(app.getPath('userData'), 'chat-keys');
+        mkdirSync(folder, { recursive: true, mode: 0o700 });
+        const filename = path.join(folder, service.store.settings.deviceId + '.json');
+        if (existsSync(filename)) {
+          try {
+            const saved = JSON.parse(readFileSync(filename, 'utf8'));
+            if (!validIdentity(saved)) throw new Error();
+            return saved;
+          } catch {
+            throw new Error('本机聊天密钥无法读取，请在设置中更换设备身份');
+          }
+        }
+        const identity = generateIdentity();
+        writeFileSync(filename, JSON.stringify(identity), { mode: 0o600, flag: 'wx' });
+        return identity;
       });
       handler('bootstrap', () => ({
         controlUrl: service.controlUrl,

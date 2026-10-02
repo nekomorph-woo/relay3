@@ -11,6 +11,15 @@ export function generateIdentity(): ChatIdentity {
   const privateKey = random(32);
   return { privateKey: toBase64(privateKey), publicKey: toBase64(x25519.getPublicKey(privateKey)) };
 }
+export function validIdentity(value: unknown): value is ChatIdentity {
+  try {
+    const key = value as ChatIdentity;
+    const privateKey = fromBase64(key.privateKey);
+    return privateKey.length === 32 && key.publicKey === toBase64(x25519.getPublicKey(privateKey));
+  } catch {
+    return false;
+  }
+}
 function aad(context: ChatContext, clientId: string) {
   return encode(
     JSON.stringify([

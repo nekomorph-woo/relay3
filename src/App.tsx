@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  MessageSquare,
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
@@ -27,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { ChatHall } from './chat/ChatHall';
 import {
   request,
   uuid,
@@ -46,8 +48,9 @@ import {
   type Device,
 } from './api';
 
-type Page = 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings';
+type Page = 'chat' | 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings';
 const pageInfo: Record<Page, [string, string]> = {
+  chat: ['群聊大厅', '连接设备的文字交流与历史。'],
   transfer: ['文件传输', '选择设备，把文件送过去。'],
   station: ['中转站', '让这台电脑成为局域网里的接力点。'],
   devices: ['连接设备', '查看当前连接与历史连接记录。'],
@@ -579,12 +582,13 @@ export default function App() {
   const transfers = hub?.transfers.filter((t) => active.includes(t.status)) ?? [];
   const nav = [
     { id: 'transfer' as Page, label: '文件传输', icon: ArrowLeftRight },
+    { id: 'chat' as Page, label: '群聊大厅', icon: MessageSquare },
     { id: 'station' as Page, label: '中转站', icon: Radio },
     { id: 'devices' as Page, label: '连接设备', icon: Monitor },
     { id: 'history' as Page, label: '收发记录', icon: History },
     { id: 'storage' as Page, label: '文件存储', icon: HardDrive },
     { id: 'settings' as Page, label: '设置', icon: Settings },
-  ].filter((n) => desktop || ['transfer', 'history', 'settings'].includes(n.id));
+  ].filter((n) => desktop || ['transfer', 'chat', 'history', 'settings'].includes(n.id));
   const historyRows = records;
   return (
     <div className="app">
@@ -606,6 +610,9 @@ export default function App() {
             >
               <Icon size={19} />
               <span>{label}</span>
+              {id === 'chat' && (hub?.chatUnread ?? 0) > 0 && (
+                <span className="count">{hub?.chatUnread}</span>
+              )}
               {id === 'transfer' && transfers.length > 0 && (
                 <span className="count">{transfers.length}</span>
               )}
@@ -620,7 +627,7 @@ export default function App() {
               <small>{desktop ? '桌面终端' : '手机客户端'}</small>
             </div>
           </div>
-          <span className="version">relay3 {boot?.version ?? '0.3.3'}</span>
+          <span className="version">relay3 {boot?.version ?? '0.3.4'}</span>
         </div>
       </aside>
       <div className="workspace">
@@ -651,8 +658,8 @@ export default function App() {
             )}
           </div>
         </header>
-        <main>
-          <div className="page-head">
+        <main className={page === 'chat' && session ? 'chat-workspace' : undefined}>
+          <div className="page-head" hidden={page === 'chat' && !!session}>
             <div>
               <h1>{pageInfo[page][0]}</h1>
               <p>{pageInfo[page][1]}</p>
@@ -675,6 +682,27 @@ export default function App() {
                 <X size={16} />
               </button>
             </div>
+          )}
+          {session && (
+            <ChatHall
+              key={`${session.base}:${session.id}`}
+              session={session}
+              connected={connected}
+              visible={page === 'chat'}
+              latestId={hub?.chatLatestId ?? 0}
+              onCopy={copy}
+              onRead={() => {
+                void request<HubState>(session.base, session.token, '/api/state')
+                  .then(setHub)
+                  .catch(() => {});
+              }}
+              management={admin?.settings.stationId === session.stationId ? management : undefined}
+            />
+          )}
+          {page === 'chat' && !session && (
+            <Empty icon={<MessageSquare size={28} />} title="连接中转站后加入大厅">
+              请先连接一个中转站。每个中转站有独立的消息历史。
+            </Empty>
           )}
           {page === 'transfer' && (
             <>
@@ -1685,7 +1713,7 @@ export default function App() {
         >
           <p>
             {modal === 'resetIdentity'
-              ? '更换后需要重新配对。当前连接和未完成传输会终止，收发记录及已接收文件保留。'
+              ? '更换后需要重新配对，新的聊天密钥无法解密发给旧身份的密文。当前连接和未完成传输会终止，收发记录及已接收文件保留。'
               : modal === 'removeDevice'
                 ? '清除该设备及连接历史，无论是否在线。在线设备会被断开，未完成传输会取消，旧凭证立即失效，收发记录和文件保留。'
                 : modal === 'stop'

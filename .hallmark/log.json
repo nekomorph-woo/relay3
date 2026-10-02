@@ -1,6 +1,14 @@
 [
   {
     "date": "2026-10-02",
+    "scope": "chat",
+    "macrostructure": "Chat workbench",
+    "theme": "custom muted slate",
+    "enrichment": "none",
+    "brief": "参考即时通信布局，消息流与底部输入区，密文独立弹窗，手机信息抽屉"
+  },
+  {
+    "date": "2026-10-02",
     "macrostructure": "Workbench",
     "theme": "custom",
     "theme_axes": "light / grotesk-sans / cool",

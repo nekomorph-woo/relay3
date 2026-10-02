@@ -5,6 +5,7 @@ writeFileSync(
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
  copyText: text => ipcRenderer.invoke('clipboard-write', text),
+ chatIdentity: () => ipcRenderer.invoke('chat-identity'),
  bootstrap: () => ipcRenderer.invoke('bootstrap'),
  pickDirectory: () => ipcRenderer.invoke('pick-directory'),
  openDirectory: kind => ipcRenderer.invoke('open-directory', kind),
