@@ -1421,33 +1421,37 @@ dialog textarea {
   font-style: italic;
 }
 .chat-remark {
-  position: relative;
-  padding: 10px 40px 10px 12px;
-  margin-top: 12px;
-  border-left: 3px solid #86949e;
-  background: #f0f3f5;
-}
-.chat-remark.hint {
-  border-color: #8a7756;
-  background: #f5f2e9;
-}
-.chat-remark.clue {
-  border-color: #657e6d;
-  background: #edf3ed;
-}
-.chat-remark > span {
-  font-size: 11px;
+  padding: 2px 0 2px 12px;
+  border: 0;
+  border-left: 3px solid var(--color-rule);
+  background: transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
   color: var(--color-muted);
 }
-.chat-remark pre {
-  margin: 4px 0 0;
+.bbs-message .chat-remark pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 13px;
 }
+.chat-remark strong {
+  font-size: inherit;
+  font-weight: 600;
+}
 .chat-remark button {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  padding: 5px;
+  flex-shrink: 0;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+.chat-remark button:hover,
+.chat-remark button:focus-visible {
+  opacity: 1;
 }
 .chat-composer {
   padding: 16px 20px;
@@ -2028,19 +2032,6 @@ main.chat-workspace {
 }
 .chat-native-dialog button {
   white-space: nowrap;
-}
-.chat-remark {
-  border-color: var(--color-accent);
-  background: var(--color-paper-2);
-}
-.chat-remark.hint {
-  border-color: var(--color-accent);
-  background: var(--color-paper-2);
-  border-left-style: dashed;
-}
-.chat-remark.clue {
-  border-color: var(--color-success);
-  background: var(--color-success-bg);
 }
 .chat-clean-preview {
   border-color: var(--color-rule);

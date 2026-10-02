@@ -527,11 +527,12 @@ export function ChatHall({
               <Copy size={16} />
             </button>
           </header>
-          <pre className={!value.open ? 'locked-text' : ''}>{value.text}</pre>
           {m.remark && (
-            <aside className={`chat-remark ${m.remarkStyle}`}>
-              <span>{{ hint: '提示', note: '说明', clue: '线索' }[m.remarkStyle]} · 公开备注</span>
-              <pre>{m.remark}</pre>
+            <aside className="chat-remark">
+              <pre>
+                <strong>{{ hint: '提示', note: '说明', clue: '线索' }[m.remarkStyle]}</strong>：
+                {m.remark}
+              </pre>
               <button
                 title="复制公开备注"
                 aria-label="复制公开备注"
@@ -541,6 +542,7 @@ export function ChatHall({
               </button>
             </aside>
           )}
+          <pre className={!value.open ? 'locked-text' : ''}>{value.text}</pre>
           {copied === m.id && (
             <small role="status">{value.open ? '已复制正文' : '已复制实际密文'}</small>
           )}
