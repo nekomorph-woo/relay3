@@ -1,9 +1,9 @@
-import { version as appVersion } from '../package.json';
 import { test, expect, _electron } from '@playwright/test';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { unzipSync, strFromU8 } from 'fflate';
+const appVersion = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8')).version;
 test('统一异常采集、崩溃记录、脱敏导出与确认清理', async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'relay3-diagnostics-'));
   mkdirSync(path.join(dir, 'logs'));
