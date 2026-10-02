@@ -1,3 +1,4 @@
+import { reportException, setDiagnosticTarget } from './diagnostics';
 import type { Device, Transfer, SavedConnection } from '../server/store';
 export type { Device, Transfer };
 export type Session = SavedConnection;
@@ -68,6 +69,10 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      diagnosticInfo(): Promise<{ path: string; crashPath: string; files: number; bytes: number }>;
+      exportDiagnostics(): Promise<string | null>;
+      clearDiagnostics(): Promise<boolean>;
+      reportException(data: Record<string, unknown>): Promise<void>;
       chatIdentity(): Promise<import('./chat/types').ChatIdentity>;
       showAbout(): Promise<void>;
       openGithub(): Promise<void>;
@@ -94,18 +99,24 @@ export async function request<T = any>(
   url: string,
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch(base + url, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const data = await response.json();
-  if (!response.ok)
-    throw Object.assign(new Error(data.error ?? '请求失败'), { status: response.status });
-  return data;
+  setDiagnosticTarget(base, token);
+  try {
+    const response = await fetch(base + url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const data = await response.json();
+    if (!response.ok)
+      throw Object.assign(new Error(data.error ?? '请求失败'), { status: response.status });
+    return data;
+  } catch (error) {
+    reportException('api.failed ' + url.split('?')[0], error);
+    throw error;
+  }
 }
 export function uuid() {
   const b = crypto.getRandomValues(new Uint8Array(16));

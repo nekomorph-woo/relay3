@@ -1,3 +1,4 @@
+import { reportException } from '../diagnostics';
 import { useEffect, useMemo, useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { date } from '../api';
@@ -29,7 +30,11 @@ export function ChatCleanup({
     }),
     [preview, setPreview] = useState<{ count: number; throughId: number } | null>(null);
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    [error, setErrorState] = useState('');
+  function setError(message: string) {
+    if (message) reportException('chat.cleanup-failed', new Error(message));
+    setErrorState(message);
+  }
   const before = useMemo(
     () =>
       period === 'all'

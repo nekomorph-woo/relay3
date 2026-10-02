@@ -4,6 +4,10 @@ writeFileSync(
   `
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
+ diagnosticInfo: () => ipcRenderer.invoke('diagnostic-info'),
+ exportDiagnostics: () => ipcRenderer.invoke('diagnostic-export'),
+ clearDiagnostics: () => ipcRenderer.invoke('diagnostic-clear'),
+ reportException: data => ipcRenderer.invoke('diagnostic-report', data),
  showAbout: () => ipcRenderer.invoke('show-about'),
  openGithub: () => ipcRenderer.invoke('open-github'),
  copyText: text => ipcRenderer.invoke('clipboard-write', text),

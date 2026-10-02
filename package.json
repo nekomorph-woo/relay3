@@ -1,6 +1,6 @@
 {
   "name": "relay3",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "PC、Mac 与手机之间的局域网文件互传工具",
   "author": "Relay3",
@@ -25,6 +25,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^10.1.5",
     "@fastify/websocket": "^11.2.0",
+    "electron-log": "5.4.4",
     "fastify": "^5.12.0",
     "ws": "^8.18.3"
   },
@@ -42,6 +43,7 @@
     "avatarka": "4.0.0",
     "electron": "44.5.1",
     "electron-builder": "^26.0.12",
+    "fflate": "0.8.2",
     "lucide-react": "^0.468.0",
     "png-to-ico": "^3.0.1",
     "prettier": "^3.9.9",

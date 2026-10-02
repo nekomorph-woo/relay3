@@ -613,3 +613,28 @@ test('平台 UA 回退、识别来源持久化及重连更新', async () => {
     await f.close();
   }
 });
+
+test('客户端诊断接口要求认证、限制正文及记录频率', async () => {
+  const f = await fixture();
+  try {
+    assert.equal((await f.call('/api/diagnostics', '', { event: 'test' })).status, 401);
+    const device = await f.join('手机诊断');
+    assert.equal(
+      (await f.call('/api/diagnostics', device.token, { event: 'test', stack: 'x'.repeat(8001) }))
+        .status,
+      400,
+    );
+    for (let i = 0; i < 20; i++) {
+      const response = await f.service.hub.inject({
+        method: 'POST',
+        url: '/api/diagnostics',
+        headers: { authorization: 'Bearer ' + device.token },
+        payload: { event: 'test', message: 'test' },
+      });
+      assert.equal(response.statusCode, 204);
+    }
+    assert.equal((await f.call('/api/diagnostics', device.token, { event: 'test' })).status, 429);
+  } finally {
+    await f.close();
+  }
+});

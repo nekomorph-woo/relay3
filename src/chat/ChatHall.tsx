@@ -1,3 +1,4 @@
+import { reportException } from '../diagnostics';
 import { useEffect, useRef, useState } from 'react';
 import {
   Copy,
@@ -66,9 +67,13 @@ export function ChatHall({
     [recent, setRecent] = useState<Record<string, number>>(
       stored(`relay3-chat-recent:${session.stationId}:${session.id}`, {}),
     );
-  const [error, setError] = useState(''),
+  const [error, setErrorState] = useState(''),
     [busy, setBusy] = useState(false),
     [copied, setCopied] = useState<number | null>(null);
+  function setError(message: string) {
+    if (message) reportException('chat.operation-failed', new Error(message));
+    setErrorState(message);
+  }
   const [modal, setModal] = useState(false),
     [modalPage, setModalPage] = useState(0),
     [modalRange, setModalRange] = useState<{ after?: number; upper?: number }>({});

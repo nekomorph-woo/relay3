@@ -1,4 +1,13 @@
 import {
+  initializeDiagnostics,
+  observeWindow,
+  diagnosticInfo,
+  exportDiagnostics,
+  clearDiagnostics,
+  logsDir,
+} from './diagnostics';
+import { diagnostic } from '../server/diagnostics';
+import {
   app,
   BrowserWindow,
   ipcMain,
@@ -75,6 +84,7 @@ async function createWindow() {
       sandbox: true,
     },
   });
+  observeWindow(window);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (e, url) => {
     if (new URL(url).origin !== new URL(process.env.RELAY3_DEV_URL ?? service.controlUrl).origin)
@@ -104,6 +114,7 @@ async function createWindow() {
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
+  initializeDiagnostics();
   app.on('second-instance', () => {
     if (window) {
       if (window.isMinimized()) window.restore();
@@ -131,10 +142,34 @@ else {
       });
       if (process.platform === 'darwin') app.dock?.setIcon(nativeImage.createFromPath(appIconPath));
       const handler = (name: string, fn: (...args: any[]) => any) =>
-        ipcMain.handle(name, (event, ...args) => {
-          senderAllowed(event);
-          return fn(...args);
+        ipcMain.handle(name, async (event, ...args) => {
+          try {
+            senderAllowed(event);
+            return await fn(...args);
+          } catch (error) {
+            diagnostic('error', 'ipc.failed', { channel: name, error });
+            throw error;
+          }
         });
+      handler('diagnostic-info', diagnosticInfo);
+      handler('diagnostic-export', () => exportDiagnostics(window!));
+      handler('diagnostic-clear', () => clearDiagnostics(window!));
+      let diagnosticCount = 0,
+        diagnosticStarted = Date.now();
+      handler('diagnostic-report', (data: any) => {
+        if (Date.now() - diagnosticStarted > 60_000) {
+          diagnosticCount = 0;
+          diagnosticStarted = Date.now();
+        }
+        if (diagnosticCount++ >= 20) return;
+        if (!data || typeof data.event !== 'string') throw new Error('诊断数据无效');
+        diagnostic('error', 'renderer.exception', {
+          event: String(data.event).slice(0, 100),
+          name: String(data.name ?? ''),
+          message: String(data.message ?? ''),
+          stack: String(data.stack ?? ''),
+        });
+      });
       handler('show-about', () => app.showAboutPanel());
       handler('open-github', () => shell.openExternal('https://github.com/nekomorph-woo/relay3'));
       handler('clipboard-write', (text: string) => {
@@ -179,6 +214,7 @@ else {
           data: service.store.dataDir,
           cache: service.store.settings.cacheDir,
           receive: service.store.settings.receiveDir,
+          logs: logsDir,
         };
         const target = choices[kind];
         if (!target) throw new Error('目录无效');
@@ -314,6 +350,7 @@ else {
       });
     })
     .catch((err) => {
+      diagnostic('error', 'app.startup-failed', { error: err });
       dialog.showErrorBox('Relay3 启动失败', String(err));
       app.quit();
     });
@@ -323,7 +360,10 @@ else {
       e.preventDefault();
       quitting = true;
       for (const c of downloads.values()) c.abort();
-      void service.close().finally(() => app.quit());
+      void service
+        .close()
+        .catch((error) => diagnostic('error', 'app.shutdown-failed', { error }))
+        .finally(() => app.quit());
     }
   });
 }

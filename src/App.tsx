@@ -1,3 +1,4 @@
+import { reportException } from './diagnostics';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   MessageSquare,
@@ -235,6 +236,15 @@ export default function App() {
     cacheDir: '',
     receiveDir: '',
   });
+  const [diagnosticState, setDiagnosticState] = useState<{
+    path: string;
+    crashPath: string;
+    bytes: number;
+  } | null>(null);
+  useEffect(() => {
+    if (page === 'settings' && window.relay3)
+      void run(async () => setDiagnosticState(await window.relay3!.diagnosticInfo()));
+  }, [page]);
   const [savedHubs, setSavedHubs] = useState<Record<string, Session>>(stored('relay3-hubs', {}));
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -246,6 +256,7 @@ export default function App() {
     try {
       await fn();
     } catch (e: any) {
+      reportException('ui.operation-failed', e);
       inform(e.message, true);
     } finally {
       setBusy(false);
@@ -322,7 +333,9 @@ export default function App() {
       ws.onmessage = (e) => {
         try {
           setHub(JSON.parse(e.data));
-        } catch {}
+        } catch (error) {
+          reportException('connection.invalid-state', error);
+        }
       };
       ws.onclose = (e) => {
         if (dead) return;
@@ -340,7 +353,8 @@ export default function App() {
         }
         timer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempt++));
       };
-      ws.onerror = () => {};
+      ws.onerror = () =>
+        reportException('connection.socket-error', new Error('中转站实时连接失败'));
     }
     connect();
     return () => {
@@ -1670,6 +1684,54 @@ export default function App() {
                     保存设置
                   </Button>
                 </form>
+                {desktop && (
+                  <details className="note diagnostic-panel">
+                    <summary>诊断日志</summary>
+                    <p>
+                      异常自动记录在本机，日志轮转保留约 30
+                      MB。导出包含系统信息和已有崩溃转储，不自动上传。
+                    </p>
+                    <small>崩溃转储可能包含进程内存，请仅分享给信任的排查人员。</small>
+                    <div className="identity-code">
+                      <Button
+                        title="复制日志路径"
+                        onClick={() => void run(() => copy(diagnosticState?.path ?? ''))}
+                      >
+                        <Copy size={16} />
+                      </Button>
+                      <code>{diagnosticState?.path}</code>
+                    </div>
+                    <small>占用 {sizes(diagnosticState?.bytes ?? 0)}</small>
+                    <div className="actions">
+                      <Button onClick={() => void run(() => window.relay3!.openDirectory('logs'))}>
+                        打开日志目录
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          void run(async () => {
+                            const saved = await window.relay3!.exportDiagnostics();
+                            if (saved) inform('诊断日志已导出');
+                          })
+                        }
+                      >
+                        导出诊断日志
+                      </Button>
+                      <Button
+                        kind="danger"
+                        onClick={() =>
+                          void run(async () => {
+                            if (await window.relay3!.clearDiagnostics()) {
+                              setDiagnosticState(await window.relay3!.diagnosticInfo());
+                              inform('诊断日志已清理');
+                            }
+                          })
+                        }
+                      >
+                        清理日志
+                      </Button>
+                    </div>
+                  </details>
+                )}
                 {!desktop && (
                   <div className="note">
                     <Smartphone size={18} />

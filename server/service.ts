@@ -1,3 +1,4 @@
+import { diagnostic } from './diagnostics';
 import { detectPlatform, normalizePlatform } from '../src/devicePlatform';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
@@ -46,6 +47,7 @@ export class RelayService {
   pairingToken = token();
   pairingCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
   pairingCodeExpiresAt = Date.now() + 5 * 60_000;
+  diagnosticAttempts = new Map<string, { count: number; until: number }>();
   pairingAttempts = new Map<string, { count: number; until: number }>();
   rotateCode() {
     const previous = this.pairingCode;
@@ -304,11 +306,25 @@ export class RelayService {
         .header('Cache-Control', 'no-store');
       return payload;
     });
-    app.setErrorHandler((err: any, _r, reply) =>
+    app.addHook('onResponse', async (request, reply) => {
+      if (request.method !== 'GET' && request.method !== 'HEAD')
+        diagnostic(reply.statusCode >= 400 ? 'warn' : 'info', 'http.operation', {
+          method: request.method,
+          route: request.routeOptions.url ?? '[unknown]',
+          status: reply.statusCode,
+        });
+    });
+    app.setErrorHandler((err: any, request, reply) => {
+      diagnostic('error', 'http.failed', {
+        method: request.method,
+        route: request.routeOptions.url ?? '[unknown]',
+        status: err.statusCode ?? 500,
+        error: err,
+      });
       reply
         .code(err.statusCode ?? 500)
-        .send({ error: err.statusCode ? err.message : '操作失败，请检查磁盘空间和文件权限' }),
-    );
+        .send({ error: err.statusCode ? err.message : '操作失败，请检查磁盘空间和文件权限' });
+    });
     if (existsSync(this.webRoot))
       await app.register(staticFiles, { root: this.webRoot, index: 'index.html' });
     return app;
@@ -421,6 +437,7 @@ export class RelayService {
           this.removeCache(String(id));
           return { id, ok: true };
         } catch (e: any) {
+          diagnostic('error', 'cache.delete-failed', { error: e });
           return { id, ok: false, error: e.message };
         }
       });
@@ -540,18 +557,24 @@ export class RelayService {
           target === this.store.dataDir
         )
           fail('请选择独立的缓存目录');
+        diagnostic('info', 'cache.migration.begin', { source, target });
         mkdirSync(target, { recursive: true });
         if (readdirSync(target).length) fail('新缓存目录必须为空，以免覆盖已有文件');
         try {
+          diagnostic('info', 'cache.migration.copy');
           cpSync(source, target, { recursive: true, errorOnExist: true, force: false });
+          diagnostic('info', 'cache.migration.copied');
         } catch (e) {
+          diagnostic('error', 'cache.migration.copy-failed', { error: e });
           for (const dir of ['partial', 'ready'])
             rmSync(path.join(target, dir), { recursive: true, force: true });
           throw e;
         }
         s.cacheDir = target;
         this.store.saveSettings(s);
+        diagnostic('info', 'cache.migration.settings-saved');
         rmSync(source, { recursive: true, force: true });
+        diagnostic('info', 'cache.migration.complete');
       }
       this.store.saveSettings(s);
       // Retention changes apply to completed caches as well.
@@ -582,6 +605,33 @@ export class RelayService {
       running: true,
       onlineDevices: this.clients.size,
     }));
+    app.post('/api/diagnostics', async (r, reply) => {
+      const device = this.device(r);
+      const b = r.body as any;
+      if (
+        !b ||
+        typeof b.event !== 'string' ||
+        b.event.length > 150 ||
+        ['message', 'stack', 'name'].some(
+          (key) => b[key] !== undefined && (typeof b[key] !== 'string' || b[key].length > 8000),
+        )
+      )
+        fail('诊断数据无效');
+      const now = Date.now();
+      for (const [id, entry] of this.diagnosticAttempts)
+        if (entry.until < now) this.diagnosticAttempts.delete(id);
+      const entry = this.diagnosticAttempts.get(device.id) ?? { count: 0, until: now + 60_000 };
+      if (entry.count++ >= 20) fail('诊断记录过于频繁', 429);
+      this.diagnosticAttempts.set(device.id, entry);
+      diagnostic('error', 'client.exception', {
+        platform: device.platform,
+        event: b.event,
+        name: b.name ?? '',
+        message: b.message ?? '',
+        stack: b.stack ?? '',
+      });
+      return reply.code(204).send();
+    });
     app.post('/api/join', async (r) => {
       const b = r.body as any;
       if (!b || typeof b.id !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(b.id))
@@ -659,7 +709,9 @@ export class RelayService {
         const current = this.store.device(d.id);
         if (current) this.store.saveDevice({ ...current, lastSeen: Date.now() });
       });
-      socket.on('error', () => {});
+      socket.on('error', (error) =>
+        diagnostic('error', 'connection.socket-error', { platform: d.platform, error }),
+      );
       socket.on('close', () => {
         if (this.closed) return;
         this.store.disconnect(connection);
@@ -821,6 +873,10 @@ export class RelayService {
         });
         return { ok: true };
       } catch (e: any) {
+        diagnostic(e.name === 'AbortError' ? 'warn' : 'error', 'transfer.upload-failed', {
+          error: e,
+          bytes,
+        });
         const current = this.getTransfer(t.id);
         if (current.status !== 'cancelled')
           this.update(t, {
@@ -884,7 +940,10 @@ export class RelayService {
           finish(false);
         }
       });
-      stream.on('error', () => finish(false));
+      stream.on('error', (error) => {
+        diagnostic('error', 'transfer.read-failed', { error });
+        finish(false);
+      });
       reply
         .header('Content-Type', 'application/octet-stream')
         .header('Content-Length', t.size)
