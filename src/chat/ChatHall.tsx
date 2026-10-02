@@ -302,6 +302,19 @@ export function ChatHall({
             <span className="subtle">文字原样展示</span>
           </div>
         )}
+        <label className="chat-message-label">
+          <span className="chat-input-label">文字消息</span>
+          <textarea
+            aria-label="文字消息"
+            value={encrypted ? text : plainText}
+            onChange={(e) => {
+              (encrypted ? setText : setPlainText)(e.target.value);
+              draftId.current = uuid();
+            }}
+            placeholder="输入纯文本、Markdown 或 HTML 原文"
+            rows={4}
+          />
+        </label>
         {encrypted && (
           <>
             <fieldset className="chat-recipients">
@@ -347,50 +360,41 @@ export function ChatHall({
                 </label>
               ))}
             </fieldset>
-            <div className="chat-remark-input">
-              <label>
-                公开备注样式
-                <select
-                  value={remarkStyle}
-                  onChange={(e) => {
-                    setRemarkStyle(e.target.value as any);
-                    draftId.current = uuid();
-                  }}
-                >
-                  <option value="hint">提示</option>
-                  <option value="note">说明</option>
-                  <option value="clue">线索</option>
-                </select>
-              </label>
-              <label>
-                公开备注
-                <textarea
-                  aria-label="公开备注"
-                  value={remark}
-                  maxLength={1000}
-                  onChange={(e) => {
-                    setRemark(e.target.value);
-                    draftId.current = uuid();
-                  }}
-                  placeholder="所有设备可见，不会授予解密权限"
-                />
-              </label>
-            </div>
+            <details className="chat-remark-editor">
+              <summary>公开备注（可选）</summary>
+              <div className="chat-remark-input">
+                <label>
+                  公开备注样式
+                  <select
+                    value={remarkStyle}
+                    onChange={(e) => {
+                      setRemarkStyle(e.target.value as any);
+                      draftId.current = uuid();
+                    }}
+                  >
+                    <option value="hint">提示</option>
+                    <option value="note">说明</option>
+                    <option value="clue">线索</option>
+                  </select>
+                </label>
+                <label>
+                  公开备注
+                  <textarea
+                    aria-label="公开备注"
+                    value={remark}
+                    maxLength={1000}
+                    onChange={(e) => {
+                      setRemark(e.target.value);
+                      draftId.current = uuid();
+                    }}
+                    placeholder="所有设备可见，不会授予解密权限"
+                  />
+                </label>
+              </div>
+            </details>
           </>
         )}
-        <label className="chat-message-label">
-          <span className="chat-input-label">文字消息</span>
-          <textarea
-            aria-label="文字消息"
-            value={encrypted ? text : plainText}
-            onChange={(e) => {
-              (encrypted ? setText : setPlainText)(e.target.value);
-              draftId.current = uuid();
-            }}
-            placeholder="输入纯文本、Markdown 或 HTML 原文"
-            rows={4}
-          />
-        </label>
+
         <div className="chat-send-row">
           <small
             className={[...(encrypted ? text : plainText)].length > 10000 ? 'error-text' : 'subtle'}

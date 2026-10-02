@@ -124,6 +124,7 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
     .filter({ hasText: '授权手机' })
     .locator('input')
     .check();
+  await desktop.getByText('公开备注（可选）', { exact: true }).click();
   await desktop.getByLabel('公开备注', { exact: true }).fill('公开线索：下次上线阅读');
   await desktop
     .getByRole('dialog', { name: '发送密文', exact: true })
@@ -241,4 +242,27 @@ test('未授权展示、密文汇总分页、组合清理与复制', async () =>
   } finally {
     await otherContext.close();
   }
+});
+test('菜单移除后编辑快捷键可用，聊天私钥跨应用重启保留', async () => {
+  const input = desktop.getByLabel('文字消息', { exact: true });
+  await input.fill('快捷键复制验证');
+  await input.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await input.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C');
+  await expect
+    .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()))
+    .toBe('快捷键复制验证');
+  const original = await desktop.evaluate(() => window.relay3!.chatIdentity());
+  const keyFile = path.join(dir, 'chat-keys', boot.deviceId + '.json');
+  expect(JSON.parse(readFileSync(keyFile, 'utf8'))).toEqual(original);
+  await app.close();
+  app = await _electron.launch({
+    ...(process.env.RELAY3_PACKAGED_PATH
+      ? { executablePath: process.env.RELAY3_PACKAGED_PATH, args: [] }
+      : { args: ['.'] }),
+    cwd: process.cwd(),
+    env: { ...process.env, RELAY3_DATA_DIR: dir },
+  });
+  desktop = await app.firstWindow();
+  expect((await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId).toBe(boot.deviceId);
+  expect(await desktop.evaluate(() => window.relay3!.chatIdentity())).toEqual(original);
 });
