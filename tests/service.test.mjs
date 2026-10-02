@@ -462,7 +462,9 @@ test('中转站独立名称持久保存、旧版迁移与无凭证探测在线�
       f.call('/admin/settings', f.service.adminToken, body, 'POST', f.service.controlUrl);
     assert.equal((await update({ stationName: '客厅中转站' })).status, 200);
     assert.equal(f.service.store.settings.deviceName, originalDevice);
-    await f.join('手机在线');
+    const joined = await f.join('手机在线');
+    assert.equal(joined.stationName, '客厅中转站');
+    assert.equal((await f.call('/api/chat/info', joined.token)).data.stationName, '客厅中转站');
     const info = (await f.call('/api/info')).data;
     assert.equal(info.name, '客厅中转站');
     assert.equal(info.stationId, originalStationId);

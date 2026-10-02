@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-10-03",
+    "scope": "v0.3.5",
+    "macrostructure": "Native workbench",
+    "theme": "custom muted slate",
+    "enrichment": "none",
+    "brief": "设备身份上置，侧栏底部关于与 GitHub，独立站名与连接历史实时探测"
+  },
+  {
     "date": "2026-10-02",
     "scope": "user feedback",
     "macrostructure": "Native workbench",

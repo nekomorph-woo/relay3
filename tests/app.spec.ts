@@ -354,6 +354,7 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
 });
 
 test('独立中转站名称、历史实时探测、侧栏用户与系统关于入口', async () => {
+  await desktop.setViewportSize({ width: 1220, height: 840 });
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
   const device = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceName;
   await desktop.getByLabel('中转站名称', { exact: true }).fill('客厅中转站');
@@ -389,6 +390,8 @@ test('独立中转站名称、历史实时探测、侧栏用户与系统关于�
   const station = desktop.locator('.remembered-station').first();
   await expect(station).toContainText('客厅中转站');
   await expect(station).toContainText('可连接 · 0 台在线');
+  const dismiss = desktop.getByRole('button', { name: '关闭提示', exact: true });
+  await expect(dismiss).toHaveCount(0);
   await desktop.screenshot({ path: 'test-results/v035-station-probe.png' });
   // 同地址变成另一台站点时不能使用旧凭证自动重连。
   await desktop.route('**/api/info', (route) =>
