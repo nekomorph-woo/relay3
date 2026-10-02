@@ -88,15 +88,8 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
-  await expect(desktop.locator('.composer select')).toContainText('测试手机');
-  await desktop
-    .locator('.composer select')
-    .selectOption(
-      (await desktop
-        .locator('.composer select option')
-        .filter({ hasText: '测试手机' })
-        .getAttribute('value'))!,
-    );
+  await desktop.getByRole('button', { name: '接收设备', exact: true }).click();
+  await desktop.getByRole('option').filter({ hasText: '测试手机' }).click();
   const filename =
     '这是一份用于检查手机收到电脑文件时长文件名布局的测试报告_2026年10月_项目资料与附件说明.txt';
   const content = Buffer.from('relay3 桌面发给手机\n'.repeat(120000));
@@ -127,7 +120,8 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   expect(readFileSync(path.join(dir, 'mobile-download.txt'))).toEqual(content);
   await incoming.getByRole('button', { name: '确认收到' }).click();
   await expect(incoming).toHaveCount(0);
-  await mobile.locator('.composer select').selectOption(boot.deviceId);
+  await mobile.getByRole('button', { name: '接收设备', exact: true }).click();
+  await mobile.locator(`[role="option"][data-device-id="${boot.deviceId}"]`).click();
   const back = Buffer.from('手机发送到电脑的文件');
   await mobile
     .getByLabel('选择待发送文件')
@@ -229,7 +223,8 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await remotePage.getByLabel('设备名称').fill('远端手机');
     await remotePage.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await expect(remotePage.locator('main')).toHaveAttribute('data-connected', 'true');
-    await remotePage.locator('.composer select').selectOption(boot.deviceId);
+    await remotePage.getByRole('button', { name: '接收设备', exact: true }).click();
+    await remotePage.locator(`[role="option"][data-device-id="${boot.deviceId}"]`).click();
     const data = Buffer.from('跨中转站客户端记录');
     await remotePage
       .getByLabel('选择待发送文件')
@@ -416,5 +411,104 @@ test('独立中转站名称、历史实时探测、侧栏用户与系统关于�
   await desktop.getByRole('button', { name: '关闭', exact: true }).click();
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
   await desktop.screenshot({ path: 'test-results/v035-settings.png' });
+  expect(errors).toEqual([]);
+});
+
+test('四类平台标签覆盖设备与群聊，清除设备后历史消息仍有标记', async () => {
+  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
+  const peers = await desktop.evaluate(async () => {
+    const boot = await window.relay3!.bootstrap();
+    const status = await (
+      await fetch(boot.controlUrl + '/admin/status', {
+        headers: { Authorization: 'Bearer ' + boot.adminToken },
+      })
+    ).json();
+    const base = 'http://127.0.0.1:' + status.settings.port;
+    const peers = [];
+    for (const platform of ['PC', 'Android', 'iPhone']) {
+      const state = await (
+        await fetch(base + '/api/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: crypto.randomUUID(),
+            name: platform + '测试终端',
+            platform,
+            pairingToken: status.pairingToken,
+          }),
+        })
+      ).json();
+      const socket = new WebSocket(base.replace('http', 'ws') + '/api/ws?token=' + state.token);
+      await new Promise<void>((resolve) =>
+        socket.addEventListener('open', () => resolve(), { once: true }),
+      );
+      ((window as any).platformSockets ??= []).push(socket);
+      await fetch(base + '/api/chat/messages', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + state.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: crypto.randomUUID(),
+          mode: 'plain',
+          content: platform + '平台消息',
+        }),
+      });
+      peers.push(state);
+    }
+    return peers;
+  });
+  await desktop.getByRole('button', { name: '连接设备', exact: true }).click();
+  for (const [name, title, icon] of [
+    ['PC', 'PC', 'monitor'],
+    ['Android', '安卓手机', 'smartphone'],
+    ['iPhone', 'iOS手机', 'apple'],
+  ]) {
+    const row = desktop.locator('.device-record').filter({ hasText: name + '测试终端' });
+    await expect(row.locator('.device-platform-tag')).toHaveAttribute('title', title);
+    await expect(row.locator('svg.lucide-' + icon)).toBeVisible();
+  }
+  await expect(desktop.locator('.device-self .device-platform-tag')).toHaveAttribute(
+    'title',
+    'Mac',
+  );
+  await expect(desktop.locator('.device-self svg.lucide-airplay')).toBeVisible();
+  await desktop.screenshot({ path: 'test-results/v035-platform-devices.png' });
+  await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
+  await desktop.getByRole('button', { name: '接收设备', exact: true }).press('ArrowDown');
+  await expect(desktop.getByRole('listbox')).toBeVisible();
+  await expect(
+    desktop
+      .getByRole('option')
+      .filter({ hasText: 'Android测试终端' })
+      .locator('.device-platform-tag'),
+  ).toHaveAttribute('title', '安卓手机');
+  await desktop.getByRole('option').filter({ hasText: 'Android测试终端' }).click();
+  await expect(desktop.locator('.device-select-trigger .device-platform-tag')).toHaveAttribute(
+    'title',
+    '安卓手机',
+  );
+  await desktop.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  for (const [name, title] of [
+    ['PC', 'PC'],
+    ['Android', '安卓手机'],
+    ['iPhone', 'iOS手机'],
+  ]) {
+    await expect(
+      desktop
+        .locator('.bbs-message')
+        .filter({ hasText: name + '平台消息' })
+        .locator('header .device-platform-tag'),
+    ).toHaveAttribute('title', title);
+  }
+  await desktop.screenshot({ path: 'test-results/v035-platform-chat.png' });
+  await admin('/device/delete', { id: peers[0].self.id });
+  await expect(
+    desktop
+      .locator('.bbs-message')
+      .filter({ hasText: 'PC平台消息' })
+      .locator('header .device-platform-tag'),
+  ).toHaveAttribute('title', 'PC');
   expect(errors).toEqual([]);
 });

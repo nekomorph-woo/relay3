@@ -19,6 +19,12 @@ export class ChatStore {
     CREATE INDEX IF NOT EXISTS chat_message_mode ON chat_messages(mode,id);
     CREATE TABLE IF NOT EXISTS chat_keys (deviceId TEXT PRIMARY KEY, publicKey TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS chat_cursors (deviceId TEXT PRIMARY KEY, messageId INTEGER NOT NULL DEFAULT 0);`);
+    const columns = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'senderPlatform'))
+      db.exec('ALTER TABLE chat_messages ADD COLUMN senderPlatform TEXT');
+    db.exec(
+      `UPDATE chat_messages SET senderPlatform=(SELECT json_extract(data, '$.platform') FROM devices WHERE devices.id=chat_messages.senderId) WHERE senderPlatform IS NULL`,
+    );
   }
   latest() {
     return Number(
@@ -112,7 +118,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     app.get('/admin/chat/catalog', async () => ({
       senders: chat.db
         .prepare(
-          'SELECT senderId AS id, MAX(senderName) AS name FROM chat_messages GROUP BY senderId',
+          'SELECT senderId AS id, senderName AS name, senderPlatform AS platform, MAX(id) AS latestId FROM chat_messages GROUP BY senderId',
         )
         .all(),
     }));
@@ -288,7 +294,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     }
     const inserted = chat.db
       .prepare(
-        'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle) VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform) VALUES (?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         b.clientId,
@@ -300,6 +306,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
         envelope ? JSON.stringify(envelope) : null,
         remark,
         remarkStyle,
+        d.platform,
       );
     service.broadcast();
     return chat.read(

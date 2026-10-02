@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { date } from '../api';
+import { DeviceTag } from '../components/DeviceTag';
+import { DeviceSelect } from '../components/DeviceSelect';
 import { ChatDialog } from './ChatDialog';
 import type { ChatMessage, ChatFilter } from './types';
 export function ChatCleanup({
@@ -16,7 +18,9 @@ export function ChatCleanup({
     [custom, setCustom] = useState(''),
     [sender, setSender] = useState(''),
     [mode, setMode] = useState('all');
-  const [senders, setSenders] = useState<{ id: string; name: string }[]>([]),
+  const [senders, setSenders] = useState<{ id: string; name: string; platform?: string | null }[]>(
+      [],
+    ),
     [selected, setSelected] = useState<number[]>([]),
     [page, setPage] = useState(0);
   const [result, setResult] = useState<{ items: ChatMessage[]; total: number }>({
@@ -116,22 +120,14 @@ export function ChatCleanup({
               />
             </label>
           )}
-          <label>
-            发送设备
-            <select
-              aria-label="发送设备"
-              disabled={busy}
-              value={sender}
-              onChange={(e) => change(() => setSender(e.target.value))}
-            >
-              <option value="">所有设备</option>
-              {senders.map((s) => (
-                <option value={s.id} key={s.id}>
-                  {s.name} · {s.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <DeviceSelect
+            label="发送设备"
+            value={sender}
+            onChange={(id) => change(() => setSender(id))}
+            devices={senders}
+            placeholder="所有设备"
+            disabled={busy}
+          />
           <label>
             消息模式
             <select
@@ -180,7 +176,10 @@ export function ChatCleanup({
                 }
               />
               <div>
-                <strong>{m.senderName}</strong>
+                <strong>
+                  {m.senderName}
+                  <DeviceTag platform={m.senderPlatform} />
+                </strong>
                 <small>
                   {date(m.createdAt)} · {m.mode === 'encrypted' ? '密文' : '普通'}
                 </small>

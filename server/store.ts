@@ -38,8 +38,10 @@ export interface Transfer {
   size: number;
   senderId: string;
   senderName: string;
+  senderPlatform?: string | null;
   recipientId: string;
   recipientName: string;
+  recipientPlatform?: string | null;
   status: Status;
   createdAt: number;
   startedAt: number | null;
@@ -95,6 +97,12 @@ export class Store {
       CREATE INDEX IF NOT EXISTS connections_device ON connections(deviceId);
       CREATE INDEX IF NOT EXISTS transfer_time ON transfers(json_extract(data, '$.createdAt'));
       PRAGMA user_version=1;`);
+    const columns = this.db.prepare('PRAGMA table_info(connections)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'platform'))
+      this.db.exec('ALTER TABLE connections ADD COLUMN platform TEXT');
+    this.db.exec(
+      `UPDATE connections SET platform=(SELECT json_extract(data, '$.platform') FROM devices WHERE devices.id=connections.deviceId) WHERE platform IS NULL`,
+    );
     const saved = this.db.prepare('SELECT value FROM settings WHERE key=?').get('main') as
       { value: string } | undefined;
     this.settings = saved
@@ -117,7 +125,13 @@ export class Store {
       .run(Date.now());
     for (const d of this.devices())
       if (d.disconnectedAt === null) this.saveDevice({ ...d, disconnectedAt: Date.now() });
-    for (const t of this.transfers()) {
+    for (let t of this.transfers()) {
+      const senderPlatform = t.senderPlatform ?? this.device(t.senderId)?.platform;
+      const recipientPlatform = t.recipientPlatform ?? this.device(t.recipientId)?.platform;
+      if (senderPlatform !== t.senderPlatform || recipientPlatform !== t.recipientPlatform) {
+        t = { ...t, senderPlatform, recipientPlatform };
+        this.saveTransfer(t);
+      }
       if (t.status === 'uploading')
         this.saveTransfer({ ...t, status: 'failed', error: '中转站重启，上传中断，请重新发送' });
       if (t.status === 'downloading')
@@ -216,8 +230,10 @@ export class Store {
   connection(d: Device) {
     return Number(
       this.db
-        .prepare('INSERT INTO connections(deviceId,name,ip,connectedAt) VALUES (?,?,?,?)')
-        .run(d.id, d.name, d.ip, Date.now()).lastInsertRowid,
+        .prepare(
+          'INSERT INTO connections(deviceId,name,ip,connectedAt,platform) VALUES (?,?,?,?,?)',
+        )
+        .run(d.id, d.name, d.ip, Date.now(), d.platform).lastInsertRowid,
     );
   }
   disconnect(connection: number) {

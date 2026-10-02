@@ -30,6 +30,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { DeviceTag, browserPlatform } from './components/DeviceTag';
+import { DeviceSelect } from './components/DeviceSelect';
 import { SavedStations } from './components/SavedStations';
 import { DeviceAvatar } from './components/DeviceAvatar';
 import { ChatHall } from './chat/ChatHall';
@@ -463,13 +465,7 @@ export default function App() {
     const body = {
       id,
       name: deviceName,
-      platform:
-        boot?.platform ??
-        (/iPhone|iPad/.test(navigator.userAgent)
-          ? 'iPhone'
-          : /Android/.test(navigator.userAgent)
-            ? 'Android'
-            : '浏览器'),
+      platform: boot?.platform ?? browserPlatform(),
     };
     const pairingBody = /^\d{6}$/.test(code.trim())
       ? { pairingCode: code.trim() }
@@ -638,7 +634,10 @@ export default function App() {
             name={boot?.deviceName ?? deviceName}
           />
           <div>
-            <strong>{boot?.deviceName ?? deviceName}</strong>
+            <strong>
+              {boot?.deviceName ?? deviceName}
+              <DeviceTag platform={boot?.platform ?? browserPlatform()} />
+            </strong>
             <small>{desktop ? '桌面终端' : '手机客户端'}</small>
           </div>
         </div>
@@ -786,7 +785,26 @@ export default function App() {
                           <div className="transfer-details">
                             <strong>{t.name}</strong>
                             <p>
-                              {sizes(t.size)} · {t.senderName} → {t.recipientName}
+                              {sizes(t.size)} ·{' '}
+                              <span className="device-name-tag">
+                                {t.senderName}
+                                <DeviceTag
+                                  platform={
+                                    t.senderPlatform ??
+                                    hub?.devices.find((d) => d.id === t.senderId)?.platform
+                                  }
+                                />
+                              </span>{' '}
+                              →{' '}
+                              <span className="device-name-tag">
+                                {t.recipientName}
+                                <DeviceTag
+                                  platform={
+                                    t.recipientPlatform ??
+                                    hub?.devices.find((d) => d.id === t.recipientId)?.platform
+                                  }
+                                />
+                              </span>
                             </p>
                             {['uploading', 'downloading'].includes(t.status) && (
                               <>
@@ -865,21 +883,14 @@ export default function App() {
                       <h2>发送文件</h2>
                       <span className="subtle">{online.length} 台可接收设备</span>
                     </div>
-                    <label>
-                      接收设备
-                      <select
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        disabled={!connected}
-                      >
-                        <option value="">选择一台在线设备</option>
-                        {online.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name} · {d.platform}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <DeviceSelect
+                      label="接收设备"
+                      value={recipient}
+                      onChange={setRecipient}
+                      devices={online}
+                      placeholder="选择一台在线设备"
+                      disabled={!connected}
+                    />
                     <label
                       className="dropzone"
                       onDragOver={(e) => {
@@ -1104,10 +1115,11 @@ export default function App() {
                       <div className="device-record" key={d.id}>
                         <DeviceAvatar id={d.id} name={d.name} size={40} />
                         <div>
-                          <strong>{d.name}</strong>
-                          <p>
-                            {d.platform} · {d.ip}
-                          </p>
+                          <strong>
+                            {d.name}
+                            <DeviceTag platform={d.platform} />
+                          </strong>
+                          <p>{d.ip}</p>
                           <small
                             title={`首次连接 ${date(d.firstSeen)}${d.disconnectedAt ? ` · 断开 ${date(d.disconnectedAt)}` : ''} `}
                           >
@@ -1157,7 +1169,10 @@ export default function App() {
                     {admin.connections.map((c) => (
                       <div key={c.id}>
                         <span className="dot" />
-                        <strong>{c.name}</strong>
+                        <strong>
+                          {c.name}
+                          <DeviceTag platform={c.platform} />
+                        </strong>
                         <span>{c.ip}</span>
                         {c.deviceId === boot?.deviceId && (
                           <span className="badge local-device-tag">本机</span>
@@ -1233,9 +1248,25 @@ export default function App() {
                           <small>{sizes(t.size)}</small>
                         </div>
                         <div>
-                          {t.senderName}
+                          <span className="device-name-tag">
+                            {t.senderName}
+                            <DeviceTag
+                              platform={
+                                t.senderPlatform ??
+                                admin?.devices.find((d) => d.id === t.senderId)?.platform
+                              }
+                            />
+                          </span>
                           <ArrowUpRight size={13} />
-                          {t.recipientName}
+                          <span className="device-name-tag">
+                            {t.recipientName}
+                            <DeviceTag
+                              platform={
+                                t.recipientPlatform ??
+                                admin?.devices.find((d) => d.id === t.recipientId)?.platform
+                              }
+                            />
+                          </span>
                         </div>
                         <div>
                           <span>{date(t.createdAt)}</span>
@@ -1496,7 +1527,10 @@ export default function App() {
                   />
                   <div>
                     <h3>设备身份</h3>
-                    <strong>{boot?.deviceName ?? deviceName}</strong>
+                    <strong>
+                      {boot?.deviceName ?? deviceName}
+                      <DeviceTag platform={boot?.platform ?? browserPlatform()} />
+                    </strong>
                   </div>
                 </div>
                 <div className="identity-details">

@@ -494,3 +494,77 @@ test('中转站独立名称持久保存、旧版迁移与无凭证探测在线�
     await f.close();
   }
 });
+
+test('平台历史快照、旧表迁移与设备清理后消息标记保留', async () => {
+  const f = await fixture();
+  let reopened;
+  try {
+    const sender = await f.join('电脑');
+    const receiver = (
+      await f.call('/api/join', '', {
+        id: randomUUID(),
+        name: '安卓',
+        platform: 'Android',
+        pairingToken: f.service.pairingToken,
+      })
+    ).data;
+    await f.service.hub.injectWS('/api/ws?token=' + receiver.token, {
+      socket: { remoteAddress: '127.0.0.1' },
+    });
+    await wait(20);
+    const message = (
+      await f.call('/api/chat/messages', sender.token, {
+        clientId: randomUUID(),
+        mode: 'plain',
+        content: '保留平台',
+        senderPlatform: 'iOS',
+      })
+    ).data;
+    assert.equal(message.senderPlatform, 'PC');
+    const transfer = (
+      await f.call('/api/transfers', sender.token, {
+        recipientId: receiver.self.id,
+        name: '平台.txt',
+        size: 0,
+      })
+    ).data;
+    assert.equal(transfer.senderPlatform, 'PC');
+    assert.equal(transfer.recipientPlatform, 'Android');
+    assert.equal(f.service.store.connections()[0].platform, 'PC');
+    f.service.store.db.exec(
+      'ALTER TABLE connections DROP COLUMN platform; ALTER TABLE chat_messages DROP COLUMN senderPlatform;',
+    );
+    delete transfer.senderPlatform;
+    delete transfer.recipientPlatform;
+    f.service.store.saveTransfer(transfer);
+    await f.service.close();
+    reopened = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(reopened.store.connections()[0].platform, 'PC');
+    assert.equal(
+      reopened.chat.read(
+        reopened.chat.db.prepare('SELECT * FROM chat_messages WHERE id=?').get(message.id),
+      ).senderPlatform,
+      'PC',
+    );
+    assert.equal(reopened.store.transfer(transfer.id).recipientPlatform, 'Android');
+    await reopened.startControl();
+    const removed = await f.call(
+      '/admin/device/delete',
+      reopened.adminToken,
+      { id: sender.self.id },
+      'POST',
+      reopened.controlUrl,
+    );
+    assert.equal(removed.status, 200);
+    assert.equal(
+      reopened.chat.read(
+        reopened.chat.db.prepare('SELECT * FROM chat_messages WHERE id=?').get(message.id),
+      ).senderPlatform,
+      'PC',
+    );
+    assert.equal(reopened.store.transfer(transfer.id).senderPlatform, 'PC');
+  } finally {
+    await reopened?.close();
+    await f.close();
+  }
+});

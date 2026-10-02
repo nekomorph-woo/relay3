@@ -44,6 +44,7 @@ export interface AdminState {
     deviceId: string;
     name: string;
     ip: string;
+    platform?: string | null;
     connectedAt: number;
     disconnectedAt: number | null;
   }[];

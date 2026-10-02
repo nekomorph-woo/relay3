@@ -19,6 +19,7 @@ import { hiddenPhrase } from './phrases';
 import type { ChatIdentity, ChatMessage, ChatDevice } from './types';
 import { ChatCleanup } from './ChatCleanup';
 import { ChatDialog } from './ChatDialog';
+import { DeviceTag } from '../components/DeviceTag';
 import { DeviceAvatar } from '../components/DeviceAvatar';
 interface Info {
   stationId: string;
@@ -355,6 +356,7 @@ export function ChatHall({
                   <DeviceAvatar id={d.id} name={d.name} size={28} />
                   <span>
                     {d.name}
+                    <DeviceTag platform={d.platform} />
                     {d.id === session.id ? '（本机，固定包含）' : ''}
                     <small>
                       {d.online ? '在线' : '离线，上线后可读取'}
@@ -468,7 +470,10 @@ export function ChatHall({
                       className="chat-device-avatar"
                     />
                     <div>
-                      <strong>{d.name}</strong>
+                      <strong>
+                        {d.name}
+                        <DeviceTag platform={d.platform} />
+                      </strong>
                       <small>
                         {d.platform}
                         {d.publicKey ? ' · 已登记公钥' : ' · 暂无公钥'}
@@ -493,7 +498,12 @@ export function ChatHall({
         <DeviceAvatar id={m.senderId} name={m.senderName} className="bbs-avatar" />
         <div className="bbs-body">
           <header>
-            <strong>{m.senderName}</strong>
+            <strong>
+              {m.senderName}
+              <DeviceTag
+                platform={m.senderPlatform ?? devices.find((d) => d.id === m.senderId)?.platform}
+              />
+            </strong>
             {m.mode === 'encrypted' && (
               <span
                 title={value.open ? '已在本机解密' : '未获授权或本机密钥不可用'}

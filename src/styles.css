@@ -3092,3 +3092,88 @@ main.native-page {
     flex-direction: column;
   }
 }
+
+/* 平台标签与设备选择器共用同一套 Lucide 标识。 */
+.device-platform-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 22px;
+  height: 22px;
+  margin-left: 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-paper-2);
+  color: var(--color-muted);
+  flex-shrink: 0;
+  cursor: help;
+}
+.device-name-tag {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+.timeline .device-platform-tag {
+  margin: 0 0 0 5px;
+  font-size: inherit;
+}
+.device-select-field {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+}
+.device-select-trigger {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  font: inherit;
+  text-align: left;
+}
+.device-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.device-select-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  z-index: 30;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: 0 6px 18px #00000012;
+  padding: 4px;
+}
+.device-select-options button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 38px;
+  padding: var(--space-sm);
+  text-align: left;
+  font: inherit;
+  border: 0;
+  background: transparent;
+}
+.device-select-options button span:first-child {
+  overflow-wrap: anywhere;
+}
+.device-select-options button:hover,
+.device-select-options button[aria-selected='true'] {
+  background: var(--color-paper-2);
+}

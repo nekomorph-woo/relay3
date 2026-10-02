@@ -20,6 +20,7 @@ export interface ChatMessage {
   clientId: string;
   senderId: string;
   senderName: string;
+  senderPlatform?: string | null;
   createdAt: number;
   mode: 'plain' | 'encrypted';
   content: string | null;
