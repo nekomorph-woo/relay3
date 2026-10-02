@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -634,6 +634,81 @@ test('客户端诊断接口要求认证、限制正文及记录频率', async ()
       assert.equal(response.statusCode, 204);
     }
     assert.equal((await f.call('/api/diagnostics', device.token, { event: 'test' })).status, 429);
+  } finally {
+    await f.close();
+  }
+});
+
+test('异步缓存迁移兼容中文路径，设置保存失败时回滚且保留原文件', async () => {
+  const f = await fixture();
+  const originalSave = f.service.store.saveSettings.bind(f.service.store);
+  try {
+    await f.service.stopHub(true);
+    const source = f.service.store.settings.cacheDir;
+    const file = path.join(source, 'ready', '中文缓存.txt');
+    writeFileSync(file, '缓存内容');
+    const target = path.join(f.dir, '新的缓存目录');
+    f.service.store.saveSettings = (settings) => {
+      if (settings.cacheDir === target)
+        throw Object.assign(new Error('模拟数据库写入失败'), { code: 'SQLITE_FULL' });
+      originalSave(settings);
+    };
+    const failed = await f.call(
+      '/admin/settings',
+      f.service.adminToken,
+      { cacheDir: target },
+      'POST',
+      f.service.controlUrl,
+    );
+    assert.equal(failed.status, 500);
+    assert.equal(f.service.store.settings.cacheDir, source);
+    assert.equal(readFileSync(file, 'utf8'), '缓存内容');
+    assert.deepEqual(readdirSync(target), []);
+    assert.equal(f.service.cacheMigration, null);
+    f.service.store.saveSettings = originalSave;
+    const success = await f.call(
+      '/admin/settings',
+      f.service.adminToken,
+      { cacheDir: target },
+      'POST',
+      f.service.controlUrl,
+    );
+    assert.equal(success.status, 200);
+    assert.equal(readFileSync(path.join(target, 'ready', '中文缓存.txt'), 'utf8'), '缓存内容');
+    assert.equal(existsSync(source), false);
+  } finally {
+    f.service.store.saveSettings = originalSave;
+    await f.close();
+  }
+});
+
+test('缓存迁移期间拒绝启动、清理和并发保存，关闭等待迁移结束', async () => {
+  const f = await fixture();
+  try {
+    await f.service.stopHub(true);
+    let resolve;
+    f.service.cacheMigration = new Promise((done) => {
+      resolve = done;
+    });
+    await assert.rejects(f.service.startHub(), /缓存迁移中/);
+    assert.throws(() => f.service.removeCache('test-file'), /缓存迁移中/);
+    const settings = await f.call(
+      '/admin/settings',
+      f.service.adminToken,
+      { deviceName: '并发保存' },
+      'POST',
+      f.service.controlUrl,
+    );
+    assert.equal(settings.status, 409);
+    let closed = false;
+    const closing = f.service.close().then(() => {
+      closed = true;
+    });
+    await wait(20);
+    assert.equal(closed, false);
+    resolve();
+    await closing;
+    f.service.cacheMigration = null;
   } finally {
     await f.close();
   }

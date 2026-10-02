@@ -140,8 +140,8 @@ export class Store {
     }
   }
   saveSettings(s: Settings) {
-    this.settings = s;
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run('main', JSON.stringify(s));
+    this.settings = s;
   }
   clientSessions(): Record<string, SavedConnection> {
     const rows = this.db

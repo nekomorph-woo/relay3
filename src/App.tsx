@@ -1575,8 +1575,11 @@ export default function App() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     void run(async () => {
+                      let warning: string | undefined;
                       if (desktop) {
-                        setAdmin(await management('/settings', form));
+                        const updated = await management('/settings', form);
+                        setAdmin(updated);
+                        warning = updated.warning;
                         if (session && connected)
                           await request(session.base, session.token, '/api/device', {
                             name: form.deviceName,
@@ -1590,7 +1593,7 @@ export default function App() {
                             name: deviceName,
                           }).catch(() => {});
                       }
-                      inform('设置已保存');
+                      inform(warning ?? '设置已保存', !!warning);
                     });
                   }}
                 >

@@ -16,8 +16,8 @@ import {
   statfsSync,
   renameSync,
   rmSync,
-  cpSync,
 } from 'node:fs';
+import { cp, rm, readdir } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Transform, type Readable } from 'node:stream';
 import path from 'node:path';
@@ -43,6 +43,7 @@ export class RelayService {
   store: Store;
   chat: ChatStore;
   closed = false;
+  cacheMigration: Promise<void> | null = null;
   adminToken = token();
   pairingToken = token();
   pairingCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -245,6 +246,7 @@ export class RelayService {
     };
   }
   removeCache(id: string) {
+    if (this.cacheMigration) fail('缓存迁移中，请稍后操作', 409);
     if (!/^[a-zA-Z0-9-]+$/.test(id)) fail('文件标识无效');
     if (this.streams.has(id)) fail('文件正在传输，请先取消', 409);
     const t = this.store.transfer(id);
@@ -259,6 +261,7 @@ export class RelayService {
       });
   }
   cleanup(now = Date.now()) {
+    if (this.cacheMigration) return;
     for (const t of this.store.transfers())
       if (
         t.status === 'completed' &&
@@ -512,6 +515,8 @@ export class RelayService {
       return this.store.sizes();
     });
     app.post('/admin/settings', async (r) => {
+      if (this.cacheMigration) fail('缓存迁移中，请稍后保存设置', 409);
+      let warning: string | undefined;
       const b = r.body as any;
       const s = { ...this.store.settings };
       if (b.stationName !== undefined) {
@@ -560,21 +565,48 @@ export class RelayService {
         diagnostic('info', 'cache.migration.begin', { source, target });
         mkdirSync(target, { recursive: true });
         if (readdirSync(target).length) fail('新缓存目录必须为空，以免覆盖已有文件');
+        this.cacheMigration = (async () => {
+          const copiedEntries: string[] = [];
+          try {
+            diagnostic('info', 'cache.migration.copy', { strategy: 'async-fs-cp' });
+            // fs.cp 的异步实现不走 cpSync 的 std::filesystem 目录复制快路径。
+            // 异步 cp 在 errorOnExist 下拒绝已存在的根目录，因此逐项复制到空目录。
+            for (const entry of await readdir(source)) {
+              copiedEntries.push(entry);
+              await cp(path.join(source, entry), path.join(target, entry), {
+                recursive: true,
+                errorOnExist: true,
+                force: false,
+              });
+            }
+            diagnostic('info', 'cache.migration.copied');
+            s.cacheDir = target;
+            this.store.saveSettings(s);
+          } catch (error) {
+            diagnostic('error', 'cache.migration.failed', { error });
+            // 新目录原本为空，仅移除本次复制的数据；保留旧目录与原设置。
+            try {
+              for (const entry of copiedEntries)
+                await rm(path.join(target, entry), { recursive: true, force: true });
+            } catch (cleanupError) {
+              diagnostic('error', 'cache.migration.rollback-failed', { error: cleanupError });
+            }
+            throw error;
+          }
+          diagnostic('info', 'cache.migration.settings-saved');
+          try {
+            await rm(source, { recursive: true, force: true });
+          } catch (error) {
+            warning = '设置已保存，但旧缓存目录未能清理，请检查目录权限后手动清理。';
+            diagnostic('warn', 'cache.migration.old-cache-retained', { source, error });
+          }
+          diagnostic('info', 'cache.migration.complete');
+        })();
         try {
-          diagnostic('info', 'cache.migration.copy');
-          cpSync(source, target, { recursive: true, errorOnExist: true, force: false });
-          diagnostic('info', 'cache.migration.copied');
-        } catch (e) {
-          diagnostic('error', 'cache.migration.copy-failed', { error: e });
-          for (const dir of ['partial', 'ready'])
-            rmSync(path.join(target, dir), { recursive: true, force: true });
-          throw e;
+          await this.cacheMigration;
+        } finally {
+          this.cacheMigration = null;
         }
-        s.cacheDir = target;
-        this.store.saveSettings(s);
-        diagnostic('info', 'cache.migration.settings-saved');
-        rmSync(source, { recursive: true, force: true });
-        diagnostic('info', 'cache.migration.complete');
       }
       this.store.saveSettings(s);
       // Retention changes apply to completed caches as well.
@@ -583,7 +615,7 @@ export class RelayService {
           this.update(t, { expiresAt: t.completedAt + s.retentionHours * 3600_000 });
       this.cleanup();
       this.broadcast();
-      return this.status();
+      return { ...this.status(), ...(warning ? { warning } : {}) };
     });
     await app.listen({ host: '127.0.0.1', port: 0 });
     this.control = app;
@@ -591,6 +623,7 @@ export class RelayService {
     return this.controlUrl;
   }
   async startHub() {
+    if (this.cacheMigration) fail('缓存迁移中，请稍后开启中转站', 409);
     if (this.hub) return;
     const app = await this.base();
     await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
@@ -987,6 +1020,7 @@ export class RelayService {
     if (this.closed) return;
     clearInterval(this.cleanTimer);
     clearInterval(this.heartbeat);
+    await this.cacheMigration?.catch(() => {});
     await this.stopHub(true);
     await this.control?.close();
     this.closed = true;
