@@ -149,11 +149,19 @@ Windows 同样采用透明外边距与圆角底板，ICO 的 16–256 像素图�
 - Mac ARM64 与 Windows x64 已打包，ASAR 内版本和所有编译资源与工作区一致；Mac 严格递归签名通过，Windows EXE 核对为 x86-64 PE，Windows 实机仍待验证。
 - 新版 Mac 应用打开供用户体验，安装包保留本地，v0.3.5 标签和 Release 等待用户另行确认。源码提交推送。
 
-### v0.3.5 安装包 SHA-256
+### v0.3.5 平台识别与发布验证
+
+- 用户已授权提交、推送、创建 v0.3.5 标签和发布 Release；前文待确认记录为当时状态。
+- 统一平台标签覆盖本机身份、在线/离线设备、时间线、文件双方、设备选择、群聊消息、密文名单和管理员历史清理。图标提供对应中文 tooltip。
+- Electron 使用原生系统平台；网页优先浏览器平台提示，结合 UA 与触控能力识别 Android、iPhone/iPad、Mac 和 PC。iPadOS 桌面模式归为 iOS，无可靠信号显示未知设备。平台及来源存入设备 JSON；重连更新且保留首次连接时间。聊天、连接和传输保留平台快照，支持旧表迁移和已删除设备历史。
+- 格式、类型检查和生产构建通过；15 组服务/平台测试、13 组开发界面测试和 13 组最终 Mac 打包界面测试全部通过。覆盖 UA 回退、来源持久化、重连更新、平台历史迁移以及原有传输、群聊和响应式功能。
+- 最终 Mac ARM64 与 Windows x64 包内版本为 0.3.5，两端 13 个编译文件与工作区逐一一致。Mac 严格递归签名完整性校验通过，Windows 为 x86-64 PE；Windows 与真实手机尚未实机验证。
+
+### v0.3.5 最终安装包 SHA-256
 
 ```text
-fd8ba19a36bbf5742719273dc67f539c11c45bd921c951f8f1683a2cabe5f5a7  Relay3-0.3.5-mac-arm64.dmg
-a126baba056790d339d4327e0f147fb30e2f44528d9b266b4c7506dbba40d418  Relay3-0.3.5-win-x64.exe
+ef49f4f8c65f191c902e207ecbe474e416e085c8e13a2dd21fd236dcb4de6c1a  Relay3-0.3.5-mac-arm64.dmg
+e3024c170b5455e1c4bd2f30e22fe6fd706f9232aabbe71cbf9a21baceee895b  Relay3-0.3.5-win-x64.exe
 ```
 
-截图见 `design/qa/v035-*.png`。
+截图见 `design/qa/v035-platform-*.png`。上传后核验 GitHub 资源大小和 SHA-256，成功后删除本地安装包，保留 Mac 应用供体验。
