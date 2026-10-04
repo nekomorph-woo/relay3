@@ -44,6 +44,7 @@ export function ChatHall({
   onCopy,
   onRead,
   management,
+  preserveView = false,
 }: {
   session: Session;
   connected: boolean;
@@ -53,6 +54,7 @@ export function ChatHall({
   onCopy: (text: string) => Promise<void>;
   onRead: () => void;
   management?: (url: string, body?: unknown) => Promise<any>;
+  preserveView?: boolean;
 }) {
   const [identity, setIdentity] = useState<ChatIdentity | null>(null),
     [info, setInfo] = useState<Info | null>(null);
@@ -87,6 +89,9 @@ export function ChatHall({
     sequence = useRef(0),
     phrases = useRef(new Map<number, string>());
   const draftId = useRef(uuid());
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const scrollPosition = useRef(0);
   const api = <T,>(url: string, body?: unknown) =>
     request<T>(session.base, session.token, '/api/chat' + url, body);
   function display(m: ChatMessage) {
@@ -132,9 +137,10 @@ export function ChatHall({
     }
     setRows(page.items);
     phrases.current.clear();
-    if (ack) await acknowledge(page.items.at(-1)?.id ?? page.latestId);
+    if (ack && visibleRef.current) await acknowledge(page.items.at(-1)?.id ?? page.latestId);
     requestAnimationFrame(() => {
-      if (feed.current) feed.current.scrollTop = scroll === 'end' ? feed.current.scrollHeight : 0;
+      if (feed.current && visibleRef.current)
+        feed.current.scrollTop = scroll === 'end' ? feed.current.scrollHeight : 0;
     });
   }
   useEffect(() => {
@@ -173,7 +179,7 @@ export function ChatHall({
   }, [session.base, session.id, session.token, connected]);
   useEffect(() => {
     if (!visible) {
-      entry.current = false;
+      if (!preserveView) entry.current = false;
       sequence.current++;
       setModal(false);
       setCleanup(false);
@@ -184,12 +190,15 @@ export function ChatHall({
     if (!connected || !identity || !initialized.current || entry.current) return;
     entry.current = true;
     let dead = false;
+    let loaded = false;
     void (async () => {
       const next = await refreshInfo();
       if (dead) return;
       setSnapshot({ cursor: next.cursor, unread: next.unread });
       setTracking(true);
       await load(`&upper=${next.latestId}`, 'end', true);
+      if (dead) return;
+      loaded = true;
       const encrypted = await api<MessagePage>(
         `/messages?mode=encrypted&after=${next.cursor}&upper=${next.latestId}&limit=20&page=0`,
       );
@@ -201,8 +210,9 @@ export function ChatHall({
     })().catch((e) => !dead && setError(e.message));
     return () => {
       dead = true;
+      if (!loaded) entry.current = false;
     };
-  }, [visible, connected, identity]);
+  }, [visible, connected, identity, preserveView]);
   useEffect(() => {
     if (
       !visible ||
@@ -214,7 +224,13 @@ export function ChatHall({
     )
       return;
     void load(`&upper=${latestId}`, 'end', true).catch((e) => setError(e.message));
-  }, [latestId]);
+  }, [latestId, visible, connected, identity]);
+  useEffect(() => {
+    if (visible && preserveView)
+      requestAnimationFrame(() => {
+        if (feed.current) feed.current.scrollTop = scrollPosition.current;
+      });
+  }, [visible]);
   useEffect(() => {
     if (!modal) return;
     let dead = false;
@@ -623,6 +639,7 @@ export function ChatHall({
             ref={feed}
             onScroll={() => {
               const el = feed.current;
+              if (el && visible) scrollPosition.current = el.scrollTop;
               if (el)
                 setTracking(
                   (rows.at(-1)?.id ?? 0) >= latestId &&

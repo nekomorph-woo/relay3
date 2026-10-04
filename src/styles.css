@@ -3276,3 +3276,107 @@ main.native-page {
 .nearby-stations + form label[hidden] {
   display: none;
 }
+
+.station-switcher {
+  margin: 0 0 12px;
+  padding: 0 8px;
+  min-width: 0;
+}
+.station-switcher label {
+  font-size: 11px;
+  color: var(--color-muted);
+  margin-bottom: 5px;
+}
+.station-switcher select {
+  width: 100%;
+  font-size: 12px;
+  height: 36px;
+  padding: 0 8px;
+}
+.station-switcher button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 11px;
+  padding: 7px 0 0;
+}
+.sidebar:has(.station-switcher) nav {
+  gap: 3px;
+}
+.nav-entry .nav-item {
+  width: 100%;
+}
+.sidebar:has(.station-switcher) .nav-item {
+  height: 38px;
+  font-size: 13px;
+}
+.nav-group-label {
+  display: block;
+  padding: 10px 12px 4px;
+  font-size: 10px;
+  color: var(--color-muted);
+}
+.connected-stations {
+  overflow-y: auto;
+  min-height: 0;
+}
+.connected-station {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+.connected-station:last-child {
+  border-bottom: 0;
+}
+.connected-station-description {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.connected-station-description strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.connected-station-description small {
+  display: block;
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.record-station {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-muted);
+}
+.history-toolbar > select {
+  width: auto;
+  max-width: 180px;
+  font-size: 12px;
+}
+.received-panel > select {
+  height: 36px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+@media (max-width: 1000px) {
+  .connected-station {
+    flex-wrap: wrap;
+  }
+  .connected-station .actions {
+    width: 100%;
+    padding-left: 35px;
+  }
+}
+@media (max-width: 760px) {
+  .nav-entry {
+    display: contents;
+  }
+}

@@ -37,6 +37,8 @@ import { DeviceTag, browserPlatform } from './components/DeviceTag';
 import { DeviceSelect } from './components/DeviceSelect';
 import { SavedStations } from './components/SavedStations';
 import { NearbyStations } from './components/NearbyStations';
+import { useConnections } from './useConnections';
+import { ConnectedStations, connectionLabels } from './components/ConnectedStations';
 import type { DiscoveredStation } from './discoveryTypes';
 import { DeviceAvatar } from './components/DeviceAvatar';
 import { ChatHall } from './chat/ChatHall';
@@ -59,14 +61,16 @@ import {
   type Device,
 } from './api';
 
-type Page = 'chat' | 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings';
+type Page =
+  'chat' | 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings' | 'connections';
 const pageInfo: Record<Page, [string, string]> = {
   chat: ['群聊大厅', '连接设备的文字交流与历史。'],
   transfer: ['文件传输', '选择设备，把文件送过去。'],
-  station: ['中转站', '让这台电脑成为局域网里的接力点。'],
+  connections: ['连接的中转站', '管理各中转站的连接与配对。'],
+  station: ['本机中转站', '让这台电脑成为局域网里的接力点。'],
   devices: ['连接设备', '查看当前连接与历史连接记录。'],
   history: ['收发记录', '每一次发送和接收，都留有记录。'],
-  storage: ['文件存储', '查看占用空间，管理中转站暂存文件。'],
+  storage: ['本机存储', '查看占用空间，管理中转站暂存文件。'],
   settings: ['应用设置', '设备名称、保存位置与清理规则。'],
 };
 function Empty({
@@ -165,9 +169,8 @@ export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [admin, setAdmin] = useState<AdminState | null>(null),
     [page, setPage] = useState<Page>('transfer');
-  const [session, setSession] = useState<Session | null>(null),
-    [hub, setHub] = useState<HubState | null>(null),
-    [connected, setConnected] = useState(false);
+  const multi = useConnections(desktop, inform);
+  const { session, hub, connected } = multi;
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null),
     [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -187,7 +190,13 @@ export default function App() {
     | 'resetIdentity'
     | 'removeDevice'
     | 'copy'
+    | 'disconnectStation'
+    | 'forgetStation'
   >(null);
+  const [targetStation, setTargetStation] = useState('');
+  const [historyStation, setHistoryStation] = useState('all');
+  const [historyStations, setHistoryStations] = useState<{ id: string; name: string }[]>([]);
+  const [receivedStation, setReceivedStation] = useState('all');
   const [clearHours, setClearHours] = useState(24);
   const [removeDevice, setRemoveDevice] = useState<Device | null>(null);
   const [copyValue, setCopyValue] = useState('');
@@ -205,13 +214,29 @@ export default function App() {
   const [connectUrl, setConnectUrl] = useState(desktop ? '' : location.origin),
     [pairing, setPairing] = useState(new URLSearchParams(location.hash.slice(1)).get('pair') ?? '');
   const [discoveredSelection, setDiscoveredSelection] = useState<DiscoveredStation | null>(null);
-  const [recipient, setRecipient] = useState(''),
-    [files, setFiles] = useState<File[]>([]),
-    [progress, setProgress] = useState<Record<string, number>>({}),
+  const [transferDrafts, setTransferDrafts] = useState<
+    Record<string, { recipient: string; files: File[] }>
+  >({});
+  const recipient = transferDrafts[multi.activeId]?.recipient ?? '';
+  const files = transferDrafts[multi.activeId]?.files ?? [];
+  const setRecipient = (recipient: string) =>
+    setTransferDrafts((old) => ({
+      ...old,
+      [multi.activeId]: { files: old[multi.activeId]?.files ?? [], recipient },
+    }));
+  const setFiles = (files: File[] | ((old: File[]) => File[])) =>
+    setTransferDrafts((old) => ({
+      ...old,
+      [multi.activeId]: {
+        recipient: old[multi.activeId]?.recipient ?? '',
+        files: typeof files === 'function' ? files(old[multi.activeId]?.files ?? []) : files,
+      },
+    }));
+  const [progress, setProgress] = useState<Record<string, number>>({}),
     [savedPaths, setSavedPaths] = useState<Record<string, string>>({});
+  const [receivingKeys, setReceivingKeys] = useState<string[]>([]);
   const pendingFiles = useRef(new Map<string, File>()),
-    uploads = useRef(new Map<string, XMLHttpRequest>()),
-    socketRef = useRef<WebSocket | null>(null);
+    uploads = useRef(new Map<string, XMLHttpRequest>());
   const [received, setReceived] = useState<
       {
         id: string;
@@ -220,6 +245,8 @@ export default function App() {
         size: number;
         receivedAt: number;
         exists: boolean;
+        stationId?: string;
+        stationName?: string;
       }[]
     >([]),
     [receivedSelected, setReceivedSelected] = useState<string[]>([]);
@@ -250,8 +277,7 @@ export default function App() {
       void run(async () => setDiagnosticState(await window.relay3!.diagnosticInfo()));
   }, [page]);
   const [savedHubs, setSavedHubs] = useState<Record<string, Session>>(stored('relay3-hubs', {}));
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
+  const restored = useRef(false);
   function inform(text: string, error = false) {
     setNotice({ text, error });
   }
@@ -277,9 +303,9 @@ export default function App() {
     if (!session) return;
     await request(session.base, session.token, `/api/transfers/${t.id}/${a}`, {});
     if (a === 'cancel') {
-      uploads.current.get(t.id)?.abort();
-      await window.relay3?.cancelDownload(t.id);
-      pendingFiles.current.delete(t.id);
+      uploads.current.get(`${session.stationId}:${t.id}`)?.abort();
+      await window.relay3?.cancelDownload(t.id, session.stationId);
+      pendingFiles.current.delete(`${session.stationId}:${t.id}`);
     }
   }
   useEffect(() => {
@@ -293,11 +319,25 @@ export default function App() {
           );
           setSavedHubs({ ...migrated, ...next.savedHubs });
           setBoot(next);
+          if (!restored.current) {
+            restored.current = true;
+            for (const saved of Object.values(next.savedHubs))
+              if (saved.autoConnect) multi.add(saved, null, false);
+            if (
+              next.clientView?.stationId &&
+              Object.values(next.savedHubs).some(
+                (s) => s.autoConnect && s.stationId === next.clientView!.stationId,
+              )
+            )
+              multi.select(next.clientView.stationId);
+            if (next.clientView?.page && next.clientView.page in pageInfo)
+              setPage(next.clientView.page as Page);
+          }
         })
         .catch((e) => inform(e.message, true));
     else {
       const old = stored<Session | null>('relay3-session', null);
-      if (old?.base === location.origin) setSession(old);
+      if (old?.base === location.origin) multi.add(old);
     }
   }, []);
   useEffect(() => {
@@ -319,102 +359,65 @@ export default function App() {
     admin?.settings.receiveDir,
   ]);
   useEffect(() => {
-    if (!session) return;
-    let dead = false,
-      timer: ReturnType<typeof setTimeout>,
-      attempt = 0;
-    function connect() {
-      if (dead) return;
-      const ws = new WebSocket(
-        session!.base.replace(/^http/, 'ws') +
-          `/api/ws?token=${encodeURIComponent(session!.token)}`,
-      );
-      socketRef.current = ws;
-      ws.onopen = () => {
-        attempt = 0;
-        setConnected(true);
-      };
-      ws.onmessage = (e) => {
-        try {
-          setHub(JSON.parse(e.data));
-        } catch (error) {
-          reportException('connection.invalid-state', error);
-        }
-      };
-      ws.onclose = (e) => {
-        if (dead) return;
-        setConnected(false);
-        if ([4001, 4002, 4003].includes(e.code)) {
-          inform(
-            e.code === 4001
-              ? '连接凭证失效，请重新配对'
-              : e.code === 4002
-                ? '此设备已在另一窗口连接'
-                : '中转站管理员已断开此设备',
-            true,
-          );
-          return;
-        }
-        timer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempt++));
-      };
-      ws.onerror = () =>
-        reportException('connection.socket-error', new Error('中转站实时连接失败'));
+    if (desktop && boot && restored.current) {
+      save('relay3-session', session);
+      void management('/client/view', { stationId: multi.activeId, page }).catch(() => {});
     }
-    connect();
-    return () => {
-      dead = true;
-      clearTimeout(timer);
-      socketRef.current?.close();
-      setConnected(false);
-    };
-  }, [session?.base, session?.token]);
+  }, [desktop, boot, multi.activeId, page]);
   useEffect(() => {
-    if (!hub || !session) return;
-    if (boot) void management('/remember', { records: hub.transfers }).catch(() => {});
-    for (const t of hub.transfers) {
-      if (
-        t.status === 'accepted' &&
-        t.senderId === session.id &&
-        pendingFiles.current.has(t.id) &&
-        !uploads.current.has(t.id)
-      ) {
-        const file = pendingFiles.current.get(t.id)!;
-        const xhr = new XMLHttpRequest();
-        uploads.current.set(t.id, xhr);
-        xhr.open('PUT', `${session.base}/api/transfers/${t.id}/upload`);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.token}`);
-        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-        xhr.upload.onprogress = (e) => setProgress((p) => ({ ...p, [t.id]: e.loaded }));
-        xhr.onload = () => {
-          uploads.current.delete(t.id);
-          pendingFiles.current.delete(t.id);
-          if (xhr.status >= 400) {
-            try {
-              inform(JSON.parse(xhr.responseText).error, true);
-            } catch {
-              inform('上传失败，请重新发送', true);
+    for (const connection of Object.values(multi.connections)) {
+      const { hub, session } = connection;
+      if (!hub) continue;
+      if (boot) void management('/remember', { records: hub.transfers }).catch(() => {});
+      for (const t of hub.transfers) {
+        const key = `${session.stationId}:${t.id}`;
+        if (
+          t.status === 'accepted' &&
+          t.senderId === session.id &&
+          pendingFiles.current.has(key) &&
+          !uploads.current.has(key)
+        ) {
+          const file = pendingFiles.current.get(key)!;
+          const xhr = new XMLHttpRequest();
+          uploads.current.set(key, xhr);
+          xhr.open('PUT', `${session.base}/api/transfers/${t.id}/upload`);
+          xhr.setRequestHeader('Authorization', `Bearer ${session.token}`);
+          xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+          xhr.upload.onprogress = (e) => setProgress((p) => ({ ...p, [key]: e.loaded }));
+          xhr.onload = () => {
+            uploads.current.delete(key);
+            pendingFiles.current.delete(key);
+            if (xhr.status >= 400) {
+              try {
+                inform(JSON.parse(xhr.responseText).error, true);
+              } catch {
+                inform('上传失败，请重新发送', true);
+              }
             }
-          }
-        };
-        xhr.onerror = () => {
-          uploads.current.delete(t.id);
-          pendingFiles.current.delete(t.id);
-          inform('上传连接中断，请重新发送', true);
-        };
-        xhr.onabort = () => {
-          uploads.current.delete(t.id);
-          pendingFiles.current.delete(t.id);
-        };
-        xhr.send(file);
-      }
-      if (!active.includes(t.status)) {
-        pendingFiles.current.delete(t.id);
-        if (uploads.current.has(t.id)) uploads.current.get(t.id)?.abort();
+          };
+          xhr.onerror = () => {
+            uploads.current.delete(key);
+            pendingFiles.current.delete(key);
+            inform('上传连接中断，请重新发送', true);
+          };
+          xhr.onabort = () => {
+            uploads.current.delete(key);
+            pendingFiles.current.delete(key);
+          };
+          xhr.send(file);
+        }
+        if (!active.includes(t.status)) {
+          pendingFiles.current.delete(key);
+          if (uploads.current.has(key)) uploads.current.get(key)?.abort();
+        }
       }
     }
-  }, [hub]);
+  }, [multi.connections, boot]);
   useEffect(
-    () => window.relay3?.onProgress((p) => setProgress((old) => ({ ...old, [p.id]: p.bytes }))),
+    () =>
+      window.relay3?.onProgress((p) =>
+        setProgress((old) => ({ ...old, [p.key ?? `${p.stationId}:${p.id}`]: p.bytes })),
+      ),
     [],
   );
   useEffect(() => {
@@ -433,7 +436,7 @@ export default function App() {
     let dead = false;
     const poll = async () => {
       try {
-        const q = `?offset=${offset}&search=${encodeURIComponent(search)}&direction=${filter}`;
+        const q = `?offset=${offset}&search=${encodeURIComponent(search)}&direction=${filter}&station=${encodeURIComponent(historyStation === 'all' ? '' : historyStation)}`;
         const result = boot
           ? await management('/records' + q)
           : session
@@ -442,6 +445,7 @@ export default function App() {
         if (!dead) {
           setRecords(result.items);
           setTotal(result.total);
+          setHistoryStations(result.stations ?? []);
         }
       } catch (e: any) {
         if (!dead) inform(e.message, true);
@@ -453,7 +457,7 @@ export default function App() {
       dead = true;
       clearInterval(timer);
     };
-  }, [page, boot, session, offset, search, filter]);
+  }, [page, boot, session, offset, search, filter, historyStation]);
   useEffect(() => {
     if (!admin?.running) {
       setQr('');
@@ -539,12 +543,17 @@ export default function App() {
       id,
       stationId: result.stationId,
       stationName: result.stationName,
+      autoConnect: desktop,
     };
     if (desktop) await management('/client/session', next);
-    setSession(next);
-    setHub(result);
+    multi.add(next, result);
     save('relay3-session', next);
-    const remembered = { ...savedHubs, [base]: next };
+    const remembered = {
+      ...Object.fromEntries(
+        Object.entries(savedHubs).filter(([, s]) => s.stationId !== next.stationId),
+      ),
+      [base]: next,
+    };
     setSavedHubs(remembered);
     save('relay3-hubs', remembered);
     save('relay3-device-name', deviceName);
@@ -552,13 +561,47 @@ export default function App() {
     history.replaceState(null, '', location.pathname);
     inform('已连接中转站');
   }
-  function disconnect() {
-    for (const xhr of uploads.current.values()) xhr.abort();
-    uploads.current.clear();
-    pendingFiles.current.clear();
-    setSession(null);
-    setHub(null);
-    save('relay3-session', null);
+  async function disconnectStation(id: string) {
+    const connection = multi.current.current[id];
+    if (!connection) return;
+    if (desktop) await management('/client/state', { stationId: id, autoConnect: false });
+    for (const t of connection.hub?.transfers ?? []) {
+      if (!active.includes(t.status)) continue;
+      const key = `${id}:${t.id}`;
+      uploads.current.get(key)?.abort();
+      uploads.current.delete(key);
+      pendingFiles.current.delete(key);
+      await window.relay3?.cancelDownload(t.id, id);
+      if (connection.status === 'connected')
+        await request(
+          connection.session.base,
+          connection.session.token,
+          `/api/transfers/${t.id}/cancel`,
+          {},
+        ).catch(() => {});
+    }
+    multi.remove(id);
+    if (!desktop) save('relay3-session', null);
+    setSavedHubs((old) =>
+      Object.fromEntries(
+        Object.entries(old).map(([base, s]) => [
+          base,
+          s.stationId === id ? { ...s, autoConnect: false } : s,
+        ]),
+      ),
+    );
+  }
+  function disconnect(id = multi.activeId) {
+    if (!id) return;
+    const active = multi.current.current[id]?.hub?.transfers.some((t) =>
+      ['pending', 'accepted', 'uploading', 'downloading', 'ready', 'awaiting-confirm'].includes(
+        t.status,
+      ),
+    );
+    if (active) {
+      setTargetStation(id);
+      setModal('disconnectStation');
+    } else void run(() => disconnectStation(id));
   }
   async function send() {
     if (!session || !connected || !recipient) return;
@@ -568,26 +611,38 @@ export default function App() {
         size: file.size,
         recipientId: recipient,
       });
-      pendingFiles.current.set(t.id, file);
+      pendingFiles.current.set(`${session.stationId}:${t.id}`, file);
     }
     setFiles([]);
     inform('已发送请求，等待对方确认');
     const state = await request<HubState>(session.base, session.token, '/api/state');
-    setHub(state);
+    multi.updateHub(session.stationId, state);
   }
   async function receive(t: Transfer) {
     if (!session) return;
     if (window.relay3) {
-      const result = await window.relay3.download({
-        base: session.base,
-        token: session.token,
-        id: t.id,
-        name: t.name,
-        size: t.size,
-        sha256: t.sha256!,
-      });
-      setSavedPaths((p) => ({ ...p, [t.id]: result.path }));
-      inform(result.confirmed ? '文件已保存并校验完成' : '文件已保存，请点击“确认收到”完成记录');
+      const key = `${session.stationId}:${t.id}`;
+      if (receivingKeys.includes(key)) return;
+      setReceivingKeys((old) => [...old, key]);
+      try {
+        const result = await window.relay3.download({
+          base: session.base,
+          token: session.token,
+          id: t.id,
+          name: t.name,
+          size: t.size,
+          sha256: t.sha256!,
+          stationId: session.stationId,
+          stationName: t.stationName ?? session.stationName,
+        });
+        setSavedPaths((p) => ({ ...p, [`${session.stationId}:${t.id}`]: result.path }));
+        inform(
+          `${session.stationName}：` +
+            (result.confirmed ? '文件已保存并校验完成' : '文件已保存，请点击“确认收到”完成记录'),
+        );
+      } finally {
+        setReceivingKeys((old) => old.filter((id) => id !== key));
+      }
     } else {
       const a = document.createElement('a');
       a.href = `${session.base}/api/transfers/${t.id}/download?token=${encodeURIComponent(session.token)}`;
@@ -627,16 +682,18 @@ export default function App() {
     }
   }
   async function resetIdentity() {
-    for (const t of transfers) await window.relay3?.cancelDownload(t.id);
     let remoteRevoked = true;
-    if (session && connected) {
-      try {
-        await request(session.base, session.token, '/api/identity/reset', {});
-      } catch {
-        remoteRevoked = false;
-      }
+    for (const connection of Object.values(multi.current.current)) {
+      const s = connection.session;
+      if (connection.status === 'connected') {
+        try {
+          await request(s.base, s.token, '/api/identity/reset', {});
+        } catch {
+          remoteRevoked = false;
+        }
+      } else remoteRevoked = false;
+      await disconnectStation(s.stationId);
     }
-    disconnect();
     setSavedHubs({});
     save('relay3-hubs', {});
     setPairing('');
@@ -663,10 +720,11 @@ export default function App() {
   const nav = [
     { id: 'transfer' as Page, label: '文件传输', icon: ArrowLeftRight },
     { id: 'chat' as Page, label: '群聊大厅', icon: MessageSquare },
-    { id: 'station' as Page, label: '中转站', icon: Radio },
-    { id: 'devices' as Page, label: '连接设备', icon: Monitor },
     { id: 'history' as Page, label: '收发记录', icon: History },
-    { id: 'storage' as Page, label: '文件存储', icon: HardDrive },
+    { id: 'connections' as Page, label: '连接的中转站', icon: Link },
+    { id: 'station' as Page, label: '本机中转站', icon: Radio },
+    { id: 'devices' as Page, label: '连接设备', icon: Monitor },
+    { id: 'storage' as Page, label: '本机存储', icon: HardDrive },
     { id: 'settings' as Page, label: '设置', icon: Settings },
   ].filter((n) => desktop || ['transfer', 'chat', 'history', 'settings'].includes(n.id));
   const historyRows = records;
@@ -686,25 +744,61 @@ export default function App() {
             <small>{desktop ? '桌面终端' : '手机客户端'}</small>
           </div>
         </div>
+        {desktop && (
+          <div className="station-switcher">
+            <label htmlFor="active-station">当前中转站</label>
+            <select
+              id="active-station"
+              aria-label="切换中转站"
+              value={multi.activeId}
+              disabled={!Object.keys(multi.connections).length}
+              onChange={(event) => multi.select(event.target.value)}
+            >
+              {!Object.keys(multi.connections).length && <option value="">选择中转站</option>}
+              {Object.values(multi.connections).map((c) => (
+                <option key={c.session.stationId} value={c.session.stationId}>
+                  {c.session.stationName} · {connectionLabels[c.status]}
+                  {c.hub?.chatUnread ? ` · ${c.hub.chatUnread} 未读` : ''}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => setModal('connect')} aria-label="添加中转站连接">
+              <Link size={14} />
+              连接其他中转站
+            </button>
+          </div>
+        )}
         <nav aria-label="主导航">
           {nav.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              aria-label={label}
-              title={label}
-              className={page === id ? 'nav-item active' : 'nav-item'}
-              onClick={() => setPage(id)}
-              aria-current={page === id ? 'page' : undefined}
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-              {id === 'chat' && (hub?.chatUnread ?? 0) > 0 && (
-                <span className="count">{hub?.chatUnread}</span>
+            <div key={id} className="nav-entry">
+              {desktop && id === 'station' && (
+                <span className="nav-group-label">本机中转站管理</span>
               )}
-              {id === 'transfer' && transfers.length > 0 && (
-                <span className="count">{transfers.length}</span>
-              )}
-            </button>
+              {desktop && id === 'storage' && <span className="nav-group-label">本机</span>}
+              <button
+                key={id}
+                aria-label={label}
+                title={label}
+                className={page === id ? 'nav-item active' : 'nav-item'}
+                onClick={() => setPage(id)}
+                aria-current={page === id ? 'page' : undefined}
+              >
+                <Icon size={19} />
+                <span>{label}</span>
+                {id === 'chat' &&
+                  Object.values(multi.connections).some((c) => (c.hub?.chatUnread ?? 0) > 0) && (
+                    <span className="count">
+                      {Object.values(multi.connections).reduce(
+                        (n, c) => n + (c.hub?.chatUnread ?? 0),
+                        0,
+                      )}
+                    </span>
+                  )}
+                {id === 'transfer' && transfers.length > 0 && (
+                  <span className="count">{transfers.length}</span>
+                )}
+              </button>
+            </div>
           ))}
         </nav>
         <div className="sidebar-bottom">
@@ -746,7 +840,7 @@ export default function App() {
             <h1>{pageInfo[page][0]}</h1>
             <div className="page-actions">
               {session ? (
-                <Button onClick={disconnect} title="断开当前中转站">
+                <Button onClick={() => disconnect()} title="断开当前中转站">
                   <Unplug size={16} />
                   断开中转站
                 </Button>
@@ -760,6 +854,12 @@ export default function App() {
                 <Button onClick={() => setPage('station')}>
                   <Radio size={17} />
                   管理中转站
+                </Button>
+              )}
+              {desktop && session && (
+                <Button onClick={() => setModal('connect')}>
+                  <Link size={16} />
+                  连接其他中转站
                 </Button>
               )}
             </div>
@@ -776,27 +876,54 @@ export default function App() {
               </button>
             </div>
           )}
-          {session && (
+          {Object.values(multi.connections).map((connection) => (
             <ChatHall
-              key={`${session.base}:${session.id}`}
-              session={session}
-              connected={connected}
-              visible={page === 'chat'}
-              latestId={hub?.chatLatestId ?? 0}
-              onDisconnect={disconnect}
+              key={`${connection.session.stationId}:${connection.session.id}`}
+              session={connection.session}
+              connected={connection.status === 'connected'}
+              visible={page === 'chat' && connection.session.stationId === multi.activeId}
+              preserveView={desktop}
+              latestId={connection.hub?.chatLatestId ?? 0}
+              onDisconnect={() => disconnect(connection.session.stationId)}
               onCopy={copy}
               onRead={() => {
-                void request<HubState>(session.base, session.token, '/api/state')
-                  .then(setHub)
+                const s = connection.session;
+                void request<HubState>(s.base, s.token, '/api/state')
+                  .then((next) => multi.updateHub(s.stationId, next))
                   .catch(() => {});
               }}
-              management={admin?.settings.stationId === session.stationId ? management : undefined}
+              management={
+                admin?.settings.stationId === connection.session.stationId ? management : undefined
+              }
             />
-          )}
+          ))}
           {page === 'chat' && !session && (
             <Empty icon={<MessageSquare size={28} />} title="连接中转站后加入大厅">
               请先连接一个中转站。每个中转站有独立的消息历史。
             </Empty>
+          )}
+          {page === 'connections' && desktop && (
+            <ConnectedStations
+              connections={multi.connections}
+              saved={Object.values(savedHubs)}
+              activeId={multi.activeId}
+              busy={busy}
+              onSelect={(id) => {
+                multi.select(id);
+                setPage('transfer');
+              }}
+              onJoin={(base) => {
+                setConnectUrl(base);
+                setPairing('');
+                setDiscoveredSelection(null);
+                setModal('connect');
+              }}
+              onDisconnect={disconnect}
+              onForget={(id) => {
+                setTargetStation(id);
+                setModal('forgetStation');
+              }}
+            />
           )}
           {page === 'transfer' && (
             <>
@@ -813,9 +940,9 @@ export default function App() {
                       const incoming = t.recipientId === session?.id;
                       const amount =
                         t.status === 'uploading'
-                          ? Math.max(t.uploaded, progress[t.id] ?? 0)
+                          ? Math.max(t.uploaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
                           : t.status === 'downloading'
-                            ? Math.max(t.downloaded, progress[t.id] ?? 0)
+                            ? Math.max(t.downloaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
                             : t.uploaded;
                       const percent = t.size
                         ? Math.min(100, Math.round((amount / t.size) * 100))
@@ -864,7 +991,9 @@ export default function App() {
                               </>
                             )}
                             {t.error && <small className="error-text">{t.error}</small>}
-                            {savedPaths[t.id] && <small>{savedPaths[t.id]}</small>}
+                            {savedPaths[`${session?.stationId}:${t.id}`] && (
+                              <small>{savedPaths[`${session?.stationId}:${t.id}`]}</small>
+                            )}
                           </div>
                           <div className="transfer-actions">
                             <Badge status={t.status} />
@@ -889,8 +1018,18 @@ export default function App() {
                             {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
                               <Button
                                 kind="primary"
-                                disabled={busy}
-                                onClick={() => void run(() => receive(t))}
+                                disabled={
+                                  busy || receivingKeys.includes(`${session?.stationId}:${t.id}`)
+                                }
+                                onClick={() =>
+                                  void receive(t).catch((error) => {
+                                    reportException('download.failed', error, {
+                                      stationId: session?.stationId,
+                                      base: session?.base,
+                                    });
+                                    inform(error.message, true);
+                                  })
+                                }
                               >
                                 <Download size={16} />
                                 {t.status === 'ready' ? '下载文件' : '重新下载'}
@@ -1256,6 +1395,23 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+                {desktop && (
+                  <select
+                    aria-label="按中转站筛选记录"
+                    value={historyStation}
+                    onChange={(event) => {
+                      setHistoryStation(event.target.value);
+                      setOffset(0);
+                    }}
+                  >
+                    <option value="all">全部中转站</option>
+                    {historyStations.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <label className="search">
                   <Search size={17} />
                   <input
@@ -1291,6 +1447,12 @@ export default function App() {
                         <div>
                           <strong>{t.name}</strong>
                           <small>{sizes(t.size)}</small>
+                          {desktop && (
+                            <small className="record-station">
+                              <Radio size={12} />
+                              {t.stationName || '其他'}
+                            </small>
+                          )}
                         </div>
                         <div>
                           <span className="device-name-tag">
@@ -1525,32 +1687,64 @@ export default function App() {
                       删除所选文件
                     </Button>
                   </div>
+                  <select
+                    aria-label="按中转站筛选已接收文件"
+                    value={receivedStation}
+                    onChange={(event) => {
+                      setReceivedStation(event.target.value);
+                      setReceivedSelected([]);
+                    }}
+                  >
+                    <option value="all">全部中转站</option>
+                    {[
+                      ...new Map(
+                        received.map((f) => [
+                          f.stationId && f.stationName ? f.stationId : 'other',
+                          {
+                            id: f.stationId && f.stationName ? f.stationId : 'other',
+                            name: f.stationName || '其他',
+                          },
+                        ]),
+                      ).values(),
+                    ].map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
                   {received.length ? (
-                    received.map((f) => (
-                      <label className="cache-row received-row" key={f.id}>
-                        <input
-                          type="checkbox"
-                          checked={receivedSelected.includes(f.id)}
-                          onChange={(e) =>
-                            setReceivedSelected(
-                              e.target.checked
-                                ? [...receivedSelected, f.id]
-                                : receivedSelected.filter((id) => id !== f.id),
-                            )
-                          }
-                        />
-                        <File size={20} />
-                        <div>
-                          <strong>{f.name}</strong>
-                          <small>
-                            {sizes(f.size)} · {date(f.receivedAt)}
-                            <br />
-                            {f.path}
-                          </small>
-                        </div>
-                        <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
-                      </label>
-                    ))
+                    received
+                      .filter(
+                        (f) =>
+                          receivedStation === 'all' ||
+                          (f.stationId && f.stationName ? f.stationId : 'other') ===
+                            receivedStation,
+                      )
+                      .map((f) => (
+                        <label className="cache-row received-row" key={f.id}>
+                          <input
+                            type="checkbox"
+                            checked={receivedSelected.includes(f.id)}
+                            onChange={(e) =>
+                              setReceivedSelected(
+                                e.target.checked
+                                  ? [...receivedSelected, f.id]
+                                  : receivedSelected.filter((id) => id !== f.id),
+                              )
+                            }
+                          />
+                          <File size={20} />
+                          <div>
+                            <strong>{f.name}</strong>
+                            <small>
+                              {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
+                              <br />
+                              {f.path}
+                            </small>
+                          </div>
+                          <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
+                        </label>
+                      ))
                   ) : (
                     <Empty icon={<Download size={28} />} title="还没有本机接收文件">
                       通过桌面应用接收的文件会列在这里。
@@ -1876,51 +2070,17 @@ export default function App() {
           </div>
         </Modal>
       )}
-      {modal && modal !== 'about' && modal !== 'connect' && modal !== 'copy' && (
+      {(modal === 'disconnectStation' || modal === 'forgetStation') && (
         <Modal
-          title={
-            modal === 'resetIdentity'
-              ? '更换设备身份'
-              : modal === 'removeDevice'
-                ? `清除设备：${removeDevice?.name ?? ''}`
-                : modal === 'stop'
-                  ? '关闭中转站'
-                  : modal === 'clearCache'
-                    ? '清理所选文件'
-                    : modal === 'clearDevices'
-                      ? '清理离线设备历史'
-                      : modal === 'clearReceived'
-                        ? '删除本机已接收文件'
-                        : '清理收发历史'
-          }
+          title={modal === 'forgetStation' ? '忘记中转站配对' : '断开中转站'}
           onClose={() => setModal(null)}
         >
           <p>
-            {modal === 'resetIdentity'
-              ? '更换后需要重新配对，新的聊天密钥无法解密发给旧身份的密文。当前连接和未完成传输会终止，收发记录及已接收文件保留。'
-              : modal === 'removeDevice'
-                ? '清除该设备及连接历史，无论是否在线。在线设备会被断开，未完成传输会取消，旧凭证立即失效，收发记录和文件保留。'
-                : modal === 'stop'
-                  ? '关闭后所有连接设备都会断开。正在传输的文件会中断，可重新发送或下载。'
-                  : modal === 'clearCache'
-                    ? '所选中转缓存将从磁盘删除。尚未接收的文件将无法继续下载，收发记录保留。'
-                    : modal === 'clearReceived'
-                      ? '所选正式文件将从接收目录永久删除，无法撤销。收发历史仍然保留。'
-                      : modal === 'clearDevices'
-                        ? '按最近一次连接的时间清理符合条件的离线设备及其连接历史，在线设备保留。未完成传输将取消，收发记录与文件保留。'
-                        : '删除已结束且本机缓存已清理的收发记录，以及已结束的客户端历史。进行中的传输与仍有缓存的记录保留。此操作无法撤销。'}
+            {modal === 'forgetStation'
+              ? '删除本机保存的配对凭证，收发记录与已接收文件保留。'
+              : '此中转站还有未结束的传输，断开将取消这些传输。'}
+            其他中转站的连接继续运行。
           </p>
-          {modal === 'clearDevices' && (
-            <label>
-              最近连接时间早于
-              <select value={clearHours} onChange={(e) => setClearHours(Number(e.target.value))}>
-                <option value={1}>1 小时前</option>
-                <option value={24}>24 小时前</option>
-                <option value={168}>7 天前</option>
-                <option value={720}>30 天前</option>
-              </select>
-            </label>
-          )}
           <div className="dialog-actions">
             <Button onClick={() => setModal(null)}>取消</Button>
             <Button
@@ -1928,53 +2088,132 @@ export default function App() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  if (modal === 'resetIdentity') {
-                    await resetIdentity();
-                  } else if (modal === 'removeDevice' && removeDevice) {
-                    await management('/device/delete', { id: removeDevice.id });
-                    await refreshAdmin();
-                    inform('设备及连接历史已清除，收发记录保留');
-                  } else if (modal === 'stop') {
-                    const stopped = await management<AdminState>('/station/stop', { force: true });
-                    setAdmin(stopped);
-                    if (session?.stationId === stopped.settings.stationId) disconnect();
-                  } else if (modal === 'clearCache') {
-                    const result = await management('/cache/delete', { ids: selected });
-                    const failed = result.results.filter((r: any) => !r.ok);
-                    if (failed.length) inform(failed.map((r: any) => r.error).join('；'), true);
-                    else inform('缓存已清理，记录保留');
-                    setSelected([]);
-                    setCache(await management('/cache'));
-                  } else if (modal === 'clearReceived') {
-                    const r = await management('/received/delete', { ids: receivedSelected });
-                    setReceived((await management('/received')).entries);
-                    setReceivedSelected([]);
-                    inform(`已删除 ${r.deleted} 个本机接收文件，收发记录保留`);
-                  } else if (modal === 'clearDevices') {
-                    const r = await management('/devices/clear', { hours: clearHours });
-                    inform(`已清理 ${r.deleted} 台离线设备的历史`);
-                    await refreshAdmin();
-                  } else {
-                    const r = await management('/records/clear', {});
-                    inform(`已清理 ${r.deleted} 条记录`);
-                    const result = await management('/records');
-                    setRecords(result.items);
-                    setTotal(result.total);
-                    setOffset(0);
+                  await disconnectStation(targetStation);
+                  if (modal === 'forgetStation') {
+                    await management('/client/forget', { stationId: targetStation });
+                    const next = Object.fromEntries(
+                      Object.entries(savedHubs).filter(([, s]) => s.stationId !== targetStation),
+                    );
+                    setSavedHubs(next);
+                    save('relay3-hubs', next);
                   }
                   setModal(null);
                 })
               }
             >
-              {modal === 'resetIdentity'
-                ? '确认更换'
-                : modal === 'stop'
-                  ? '关闭中转站'
-                  : '确认清理'}
+              {modal === 'forgetStation' ? '确认忘记配对' : '取消传输并断开'}
             </Button>
           </div>
         </Modal>
       )}
+      {modal &&
+        modal !== 'about' &&
+        modal !== 'connect' &&
+        modal !== 'copy' &&
+        modal !== 'disconnectStation' &&
+        modal !== 'forgetStation' && (
+          <Modal
+            title={
+              modal === 'resetIdentity'
+                ? '更换设备身份'
+                : modal === 'removeDevice'
+                  ? `清除设备：${removeDevice?.name ?? ''}`
+                  : modal === 'stop'
+                    ? '关闭中转站'
+                    : modal === 'clearCache'
+                      ? '清理所选文件'
+                      : modal === 'clearDevices'
+                        ? '清理离线设备历史'
+                        : modal === 'clearReceived'
+                          ? '删除本机已接收文件'
+                          : '清理收发历史'
+            }
+            onClose={() => setModal(null)}
+          >
+            <p>
+              {modal === 'resetIdentity'
+                ? '更换后需要重新配对，新的聊天密钥无法解密发给旧身份的密文。当前连接和未完成传输会终止，收发记录及已接收文件保留。'
+                : modal === 'removeDevice'
+                  ? '清除该设备及连接历史，无论是否在线。在线设备会被断开，未完成传输会取消，旧凭证立即失效，收发记录和文件保留。'
+                  : modal === 'stop'
+                    ? '关闭后所有连接设备都会断开。正在传输的文件会中断，可重新发送或下载。'
+                    : modal === 'clearCache'
+                      ? '所选中转缓存将从磁盘删除。尚未接收的文件将无法继续下载，收发记录保留。'
+                      : modal === 'clearReceived'
+                        ? '所选正式文件将从接收目录永久删除，无法撤销。收发历史仍然保留。'
+                        : modal === 'clearDevices'
+                          ? '按最近一次连接的时间清理符合条件的离线设备及其连接历史，在线设备保留。未完成传输将取消，收发记录与文件保留。'
+                          : '删除已结束且本机缓存已清理的收发记录，以及已结束的客户端历史。进行中的传输与仍有缓存的记录保留。此操作无法撤销。'}
+            </p>
+            {modal === 'clearDevices' && (
+              <label>
+                最近连接时间早于
+                <select value={clearHours} onChange={(e) => setClearHours(Number(e.target.value))}>
+                  <option value={1}>1 小时前</option>
+                  <option value={24}>24 小时前</option>
+                  <option value={168}>7 天前</option>
+                  <option value={720}>30 天前</option>
+                </select>
+              </label>
+            )}
+            <div className="dialog-actions">
+              <Button onClick={() => setModal(null)}>取消</Button>
+              <Button
+                kind="danger"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    if (modal === 'resetIdentity') {
+                      await resetIdentity();
+                    } else if (modal === 'removeDevice' && removeDevice) {
+                      await management('/device/delete', { id: removeDevice.id });
+                      await refreshAdmin();
+                      inform('设备及连接历史已清除，收发记录保留');
+                    } else if (modal === 'stop') {
+                      const stopped = await management<AdminState>('/station/stop', {
+                        force: true,
+                      });
+                      setAdmin(stopped);
+                      if (multi.current.current[stopped.settings.stationId])
+                        await disconnectStation(stopped.settings.stationId);
+                    } else if (modal === 'clearCache') {
+                      const result = await management('/cache/delete', { ids: selected });
+                      const failed = result.results.filter((r: any) => !r.ok);
+                      if (failed.length) inform(failed.map((r: any) => r.error).join('；'), true);
+                      else inform('缓存已清理，记录保留');
+                      setSelected([]);
+                      setCache(await management('/cache'));
+                    } else if (modal === 'clearReceived') {
+                      const r = await management('/received/delete', { ids: receivedSelected });
+                      setReceived((await management('/received')).entries);
+                      setReceivedSelected([]);
+                      inform(`已删除 ${r.deleted} 个本机接收文件，收发记录保留`);
+                    } else if (modal === 'clearDevices') {
+                      const r = await management('/devices/clear', { hours: clearHours });
+                      inform(`已清理 ${r.deleted} 台离线设备的历史`);
+                      await refreshAdmin();
+                    } else {
+                      const r = await management('/records/clear', {});
+                      inform(`已清理 ${r.deleted} 条记录`);
+                      const result = await management('/records');
+                      setRecords(result.items);
+                      setTotal(result.total);
+                      setHistoryStations(result.stations ?? []);
+                      setOffset(0);
+                    }
+                    setModal(null);
+                  })
+                }
+              >
+                {modal === 'resetIdentity'
+                  ? '确认更换'
+                  : modal === 'stop'
+                    ? '关闭中转站'
+                    : '确认清理'}
+              </Button>
+            </div>
+          </Modal>
+        )}
     </div>
   );
 }
