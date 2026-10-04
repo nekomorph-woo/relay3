@@ -36,6 +36,8 @@ import { browserPlatformInfo } from './devicePlatform';
 import { DeviceTag, browserPlatform } from './components/DeviceTag';
 import { DeviceSelect } from './components/DeviceSelect';
 import { SavedStations } from './components/SavedStations';
+import { NearbyStations } from './components/NearbyStations';
+import type { DiscoveredStation } from './discoveryTypes';
 import { DeviceAvatar } from './components/DeviceAvatar';
 import { ChatHall } from './chat/ChatHall';
 import {
@@ -202,6 +204,7 @@ export default function App() {
     );
   const [connectUrl, setConnectUrl] = useState(desktop ? '' : location.origin),
     [pairing, setPairing] = useState(new URLSearchParams(location.hash.slice(1)).get('pair') ?? '');
+  const [discoveredSelection, setDiscoveredSelection] = useState<DiscoveredStation | null>(null);
   const [recipient, setRecipient] = useState(''),
     [files, setFiles] = useState<File[]>([]),
     [progress, setProgress] = useState<Record<string, number>>({}),
@@ -477,7 +480,28 @@ export default function App() {
     const base = u.origin,
       code = new URLSearchParams(u.hash.slice(1)).get('pair') ?? codeInput;
     const id = boot?.deviceId ?? mobileId.current;
-    const old = savedHubs[base]?.id === id ? savedHubs[base] : undefined;
+    const discovered = discoveredSelection?.base === base ? discoveredSelection : null;
+    if (discovered) {
+      const response = await fetch(base + '/api/info', {
+        credentials: 'omit',
+        redirect: 'error',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(3500),
+      });
+      const info = await response.json();
+      if (
+        !response.ok ||
+        info.app !== 'Relay3' ||
+        info.running !== true ||
+        info.stationId !== discovered.stationId
+      )
+        throw new Error('中转站已变化或无法访问，请刷新附近中转站后重试');
+    }
+    const old = discovered
+      ? Object.values(savedHubs).find((s) => s.id === id && s.stationId === discovered.stationId)
+      : savedHubs[base]?.id === id
+        ? savedHubs[base]
+        : undefined;
     const body = {
       id,
       name: deviceName,
@@ -1749,19 +1773,42 @@ export default function App() {
       </div>
       {modal === 'connect' && (
         <Modal title="连接中转站" onClose={() => setModal(null)}>
+          {desktop && (
+            <NearbyStations
+              selectedBase={connectUrl}
+              busy={busy}
+              onSelect={(station) => {
+                setConnectUrl(station.base);
+                setPairing('');
+                setDiscoveredSelection(station);
+              }}
+            />
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void run(() => join());
             }}
           >
-            <label>
+            {desktop && discoveredSelection && (
+              <button
+                type="button"
+                className="discovery-manual-action"
+                onClick={() => setDiscoveredSelection(null)}
+              >
+                手动输入地址或配对链接
+              </button>
+            )}
+            <label hidden={desktop && !!discoveredSelection}>
               中转站地址或配对链接
               <input
                 required
                 placeholder="http://192.168.1.8:42830"
                 value={connectUrl}
-                onChange={(e) => setConnectUrl(e.target.value)}
+                onChange={(e) => {
+                  setConnectUrl(e.target.value);
+                  setDiscoveredSelection(null);
+                }}
               />
             </label>
             <label>
@@ -1781,13 +1828,17 @@ export default function App() {
                 placeholder="输入 6 位一次性数字，或扫码自动填入"
                 onChange={(e) => setPairing(e.target.value)}
               />
-              <small>输入中转站地址后，填写其页面显示的 6 位数字。完整配对链接无需另外填写。</small>
+              <small>
+                {desktop
+                  ? '填写中转站页面显示的 6 位数字，已配对的中转站可直接连接。'
+                  : '输入中转站地址后，填写其页面显示的 6 位数字。完整配对链接无需另外填写。'}
+              </small>
             </label>
             <Button type="submit" kind="primary" disabled={busy}>
               连接
             </Button>
           </form>
-          {Object.keys(savedHubs).length > 0 && (
+          {Object.keys(savedHubs).length > 0 && !(desktop && discoveredSelection) && (
             <SavedStations
               stations={Object.values(savedHubs)}
               busy={busy}
