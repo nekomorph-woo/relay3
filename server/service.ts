@@ -373,7 +373,45 @@ export class RelayService {
         token: b.token,
         stationId: b.stationId,
         stationName: b.stationName,
+        ...(typeof b.autoConnect === 'boolean' ? { autoConnect: b.autoConnect } : {}),
       });
+      return { ok: true };
+    });
+    app.post('/admin/client/state', async (r) => {
+      const b = r.body as any;
+      if (typeof b?.stationId !== 'string' || typeof b.autoConnect !== 'boolean')
+        fail('连接状态无效');
+      const saved = Object.values(this.store.clientSessions()).find(
+        (s) => s.stationId === b.stationId,
+      );
+      if (!saved) fail('中转站未配对', 404);
+      this.store.saveClientSession({ ...saved, autoConnect: b.autoConnect });
+      return { ok: true };
+    });
+    app.post('/admin/client/forget', async (r) => {
+      const id = (r.body as any)?.stationId;
+      if (typeof id !== 'string') fail('中转站标识无效');
+      this.store.forgetClientSession(id);
+      return { ok: true };
+    });
+    app.post('/admin/client/view', async (r) => {
+      const b = r.body as any;
+      if (
+        typeof b?.stationId !== 'string' ||
+        typeof b.page !== 'string' ||
+        ![
+          'transfer',
+          'chat',
+          'history',
+          'connections',
+          'station',
+          'devices',
+          'storage',
+          'settings',
+        ].includes(b.page)
+      )
+        fail('页面状态无效');
+      this.store.saveClientView({ stationId: b.stationId, page: b.page });
       return { ok: true };
     });
     app.post('/admin/client/join-local', async () => {
@@ -488,8 +526,25 @@ export class RelayService {
             ? t.senderId === this.store.settings.deviceId
             : t.recipientId === this.store.settings.deviceId),
       );
+      const filtered = visible.filter(
+        (t) => !q.station || (t.stationName && t.stationId ? t.stationId : 'other') === q.station,
+      );
       const offset = Math.max(0, Number(q.offset) || 0);
-      return { items: visible.slice(offset, offset + 50), total: visible.length };
+      return {
+        items: filtered.slice(offset, offset + 50),
+        total: filtered.length,
+        stations: [
+          ...new Map(
+            all.map((t) => [
+              t.stationName && t.stationId ? t.stationId : 'other',
+              {
+                id: t.stationName && t.stationId ? t.stationId : 'other',
+                name: t.stationName || '其他',
+              },
+            ]),
+          ).values(),
+        ],
+      };
     });
     app.post('/admin/remember', async (r) => {
       const records = (r.body as any)?.records;
@@ -822,6 +877,7 @@ export class RelayService {
       const t: Transfer = {
         id: randomUUID(),
         stationId: this.store.settings.stationId,
+        stationName: this.store.settings.stationName,
         name: cleanName(b.name),
         size: b.size,
         senderId: d.id,

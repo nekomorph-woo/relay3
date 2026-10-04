@@ -19,6 +19,7 @@ export interface Bootstrap {
   platform: string;
   version: string;
   savedHubs: Record<string, Session>;
+  clientView?: { stationId?: string; page?: string };
 }
 export interface AdminState {
   running: boolean;
@@ -91,9 +92,13 @@ declare global {
         name: string;
         size: number;
         sha256: string;
+        stationId?: string;
+        stationName?: string;
       }): Promise<{ path: string; confirmed: boolean }>;
-      cancelDownload(id: string): Promise<boolean>;
-      onProgress(callback: (data: { id: string; bytes: number }) => void): () => void;
+      cancelDownload(id: string, stationId?: string): Promise<boolean>;
+      onProgress(
+        callback: (data: { id: string; key?: string; stationId?: string; bytes: number }) => void,
+      ): () => void;
     };
   }
 }
@@ -118,7 +123,7 @@ export async function request<T = any>(
       throw Object.assign(new Error(data.error ?? '请求失败'), { status: response.status });
     return data;
   } catch (error) {
-    reportException('api.failed ' + url.split('?')[0], error);
+    reportException('api.failed ' + url.split('?')[0], error, { base });
     throw error;
   }
 }

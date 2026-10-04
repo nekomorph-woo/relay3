@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('relay3', {
  pickDirectory: () => ipcRenderer.invoke('pick-directory'),
  openDirectory: kind => ipcRenderer.invoke('open-directory', kind),
  download: input => ipcRenderer.invoke('download', input),
- cancelDownload: id => ipcRenderer.invoke('cancel-download', id),
+ cancelDownload: (id, stationId) => ipcRenderer.invoke('cancel-download', id, stationId),
  onProgress: callback => { const handler = (_event, data) => callback(data); ipcRenderer.on('download-progress', handler); return () => ipcRenderer.removeListener('download-progress', handler); }
 });
 `,

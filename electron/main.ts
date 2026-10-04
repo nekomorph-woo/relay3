@@ -188,6 +188,8 @@ else {
           name: String(data.name ?? ''),
           message: String(data.message ?? ''),
           stack: String(data.stack ?? ''),
+          stationId: String(data.stationId ?? '').slice(0, 100),
+          base: String(data.base ?? '').slice(0, 240),
         });
       });
       handler('show-about', () => app.showAboutPanel());
@@ -222,6 +224,7 @@ else {
         platform: process.platform === 'darwin' ? 'Mac' : 'PC',
         version: app.getVersion(),
         savedHubs: service.store.clientSessions(),
+        clientView: service.store.clientView(),
       }));
       handler('pick-directory', async () => {
         const result = await dialog.showOpenDialog(window!, {
@@ -243,8 +246,10 @@ else {
         if (error) throw new Error(error);
         return true;
       });
-      handler('cancel-download', (id: string) => {
-        downloads.get(id)?.abort();
+      handler('cancel-download', (id: string, stationId?: string) => {
+        if (stationId) downloads.get(`${stationId}:${id}`)?.abort();
+        else
+          for (const [key, controller] of downloads) if (key.endsWith(':' + id)) controller.abort();
         return true;
       });
       handler(
@@ -256,9 +261,18 @@ else {
           name: string;
           size: number;
           sha256: string;
+          stationId?: string;
+          stationName?: string;
         }) => {
           const base = localUrl(input.base);
-          if (!/^[a-zA-Z0-9-]+$/.test(input.id) || downloads.has(input.id))
+          const saved = Object.values(service.store.clientSessions()).find(
+            (s) => s.base === base && s.token === input.token,
+          );
+          if (input.stationId && saved?.stationId !== input.stationId)
+            throw new Error('中转站凭证不匹配');
+          const stationId = saved?.stationId;
+          const downloadKey = `${stationId ?? base}:${input.id}`;
+          if (!/^[a-zA-Z0-9-]+$/.test(input.id) || downloads.has(downloadKey))
             throw new Error('传输标识无效或已在接收');
           const dir = service.store.settings.receiveDir;
           mkdirSync(dir, { recursive: true });
@@ -274,9 +288,9 @@ else {
           const ext = path.extname(safeName),
             stem = safeName.slice(0, safeName.length - ext.length);
           while (existsSync(destination)) destination = path.join(dir, `${stem} (${n++})${ext}`);
-          const temporary = path.join(dir, `.relay3-${input.id}.partial`),
+          const temporary = path.join(dir, `.relay3-${randomUUID()}.partial`),
             controller = new AbortController();
-          downloads.set(input.id, controller);
+          downloads.set(downloadKey, controller);
           try {
             const response = await net.fetch(`${base}/api/transfers/${input.id}/download`, {
               headers: { Authorization: `Bearer ${input.token}` },
@@ -293,7 +307,12 @@ else {
                 hash.update(chunk);
                 if (Date.now() - last > 200) {
                   last = Date.now();
-                  window?.webContents.send('download-progress', { id: input.id, bytes });
+                  window?.webContents.send('download-progress', {
+                    id: input.id,
+                    key: downloadKey,
+                    stationId,
+                    bytes,
+                  });
                 }
                 cb(null, chunk);
               },
@@ -332,6 +351,11 @@ else {
               path: destination,
               size: bytes,
               receivedAt: Date.now(),
+              stationId,
+              stationName:
+                typeof input.stationName === 'string' && input.stationName.trim()
+                  ? input.stationName.slice(0, 240)
+                  : saved?.stationName,
             });
             // The server may observe its finish event shortly after the client receives EOF.
             let confirmed = false;
@@ -359,7 +383,7 @@ else {
             }
             return { path: destination, confirmed };
           } finally {
-            downloads.delete(input.id);
+            downloads.delete(downloadKey);
             rmSync(temporary, { force: true });
           }
         },

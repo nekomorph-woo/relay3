@@ -5,13 +5,21 @@ let count = 0,
 export function setDiagnosticTarget(base: string, token: string) {
   if (token) remote = { base, token };
 }
-export function reportException(event: string, error: unknown) {
+export function reportException(
+  event: string,
+  error: unknown,
+  context?: { stationId?: string; base?: string },
+) {
   if (Date.now() - started > 60_000) {
     count = 0;
     started = Date.now();
   }
   if (count++ >= 20) return;
-  const data = { event: scrub(event), ...errorData(error) };
+  const data = {
+    event: scrub(event),
+    ...errorData(error),
+    ...(context ? { stationId: scrub(context.stationId), base: scrub(context.base) } : {}),
+  };
   if (window.relay3) void window.relay3.reportException(data).catch(() => {});
   else if (remote)
     void fetch(remote.base + '/api/diagnostics', {

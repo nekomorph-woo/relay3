@@ -713,3 +713,117 @@ test('缓存迁移期间拒绝启动、清理和并发保存，关闭等待迁�
     await f.close();
   }
 });
+
+test('多站配对独立保存、同站换地址去重、连接意图与页面持久化，忘记配对保留记录', async () => {
+  const f = await fixture();
+  try {
+    const make = (base, stationId, name) => ({
+      base,
+      stationId,
+      stationName: name,
+      token: 'a'.repeat(64),
+      id: f.service.store.settings.deviceId,
+      autoConnect: true,
+    });
+    const a = make('http://192.168.5.10:42830', randomUUID(), '甲站');
+    const b = make('http://192.168.5.11:42830', randomUUID(), '乙站');
+    const admin = (url, body) =>
+      f.call('/admin/client/' + url, f.service.adminToken, body, 'POST', f.service.controlUrl);
+    assert.equal((await admin('session', a)).status, 200);
+    assert.equal((await admin('session', b)).status, 200);
+    assert.equal(Object.keys(f.service.store.clientSessions()).length, 2);
+    const moved = { ...a, base: 'http://192.168.5.12:42830' };
+    await admin('session', moved);
+    assert.equal(Object.keys(f.service.store.clientSessions()).length, 2);
+    assert.equal(f.service.store.clientSessions()[a.base], undefined);
+    await admin('state', { stationId: a.stationId, autoConnect: false });
+    assert.equal(f.service.store.clientSessions()[moved.base].autoConnect, false);
+    assert.equal(f.service.store.clientSessions()[b.base].autoConnect, true);
+    await admin('view', { stationId: b.stationId, page: 'chat' });
+    assert.deepEqual(f.service.store.clientView(), { stationId: b.stationId, page: 'chat' });
+    assert.equal((await admin('view', { stationId: b.stationId, page: 'invalid' })).status, 400);
+    const file = {
+      id: randomUUID(),
+      name: '文件',
+      path: '/tmp/file',
+      size: 1,
+      receivedAt: Date.now(),
+      stationId: a.stationId,
+      stationName: '甲站',
+    };
+    f.service.store.saveReceived(file);
+    await admin('forget', { stationId: a.stationId });
+    assert.equal(Object.keys(f.service.store.clientSessions()).length, 1);
+    assert.deepEqual(f.service.store.received()[0], file);
+    const second = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(second.store.clientSessions()[b.base].autoConnect, true);
+    assert.equal(second.store.clientView().page, 'chat');
+    await second.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('新记录保留中转站名称快照，旧 JSON 不回填，其他来源可筛选且跨站相同传输 ID 不覆盖', async () => {
+  const f = await fixture();
+  try {
+    const sender = await f.join('发送'),
+      receiver = await f.join('接收');
+    f.service.store.saveSettings({
+      ...f.service.store.settings,
+      stationName: '原名称',
+      deviceId: sender.self.id,
+    });
+    const { t } = await f.transfer(sender, receiver);
+    assert.equal(t.stationName, '原名称');
+    f.service.store.saveSettings({ ...f.service.store.settings, stationName: '新名称' });
+    assert.equal(f.service.getTransfer(t.id).stationName, '原名称');
+    const remote = { ...t, stationId: randomUUID(), stationName: '远端名称' };
+    f.service.store.remember([remote]);
+    const legacy = { ...t, id: randomUUID(), stationId: randomUUID() };
+    delete legacy.stationName;
+    f.service.store.remember([legacy]);
+    const rawBefore = f.service.store.db
+      .prepare('SELECT data FROM remote_records WHERE id=?')
+      .get(`${legacy.stationId}:${legacy.id}`).data;
+    const legacyFile = {
+      id: randomUUID(),
+      name: '旧文件',
+      path: '/tmp/old',
+      size: 2,
+      receivedAt: Date.now(),
+    };
+    f.service.store.saveReceived(legacyFile);
+    const second = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(
+      second.store.db
+        .prepare('SELECT data FROM remote_records WHERE id=?')
+        .get(`${legacy.stationId}:${legacy.id}`).data,
+      rawBefore,
+    );
+    assert.deepEqual(second.store.received()[0], legacyFile);
+    assert.equal(second.store.records().filter((r) => r.id === t.id).length, 2);
+    await second.close();
+    const response = await f.call(
+      '/admin/records?station=other',
+      f.service.adminToken,
+      undefined,
+      'GET',
+      f.service.controlUrl,
+    );
+    assert.equal(response.data.total, 1);
+    assert.equal(response.data.items[0].id, legacy.id);
+    assert.ok(response.data.stations.some((s) => s.id === 'other' && s.name === '其他'));
+    const remoteOnly = await f.call(
+      `/admin/records?station=${remote.stationId}`,
+      f.service.adminToken,
+      undefined,
+      'GET',
+      f.service.controlUrl,
+    );
+    assert.equal(remoteOnly.data.total, 1);
+    assert.equal(remoteOnly.data.items[0].stationName, '远端名称');
+  } finally {
+    await f.close();
+  }
+});

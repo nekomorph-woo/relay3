@@ -10,6 +10,16 @@ export interface SavedConnection {
   id: string;
   stationId: string;
   stationName: string;
+  autoConnect?: boolean;
+}
+export interface ReceivedFile {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  receivedAt: number;
+  stationId?: string;
+  stationName?: string;
 }
 export type Status =
   | 'pending'
@@ -35,6 +45,7 @@ export interface Device {
 export interface Transfer {
   id: string;
   stationId: string;
+  stationName?: string;
   name: string;
   size: number;
   senderId: string;
@@ -150,12 +161,31 @@ export class Store {
     return Object.fromEntries(rows.map((row) => [row.base, JSON.parse(row.data)]));
   }
   saveClientSession(session: SavedConnection) {
+    // 新连接替换同一中转站的旧地址，历史传输不做回填或改写。
+    for (const old of Object.values(this.clientSessions()))
+      if (old.stationId === session.stationId && old.base !== session.base)
+        this.db.prepare('DELETE FROM client_sessions WHERE base=?').run(old.base);
     this.db
       .prepare('INSERT OR REPLACE INTO client_sessions VALUES (?,?,?)')
       .run(session.base, session.id, JSON.stringify(session));
   }
   clearClientSessions() {
     this.db.exec('DELETE FROM client_sessions');
+  }
+  forgetClientSession(stationId: string) {
+    for (const session of Object.values(this.clientSessions()))
+      if (session.stationId === stationId)
+        this.db.prepare('DELETE FROM client_sessions WHERE base=?').run(session.base);
+  }
+  clientView(): { stationId?: string; page?: string } {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key=?').get('client-view') as
+      { value: string } | undefined;
+    return row ? JSON.parse(row.value) : {};
+  }
+  saveClientView(view: { stationId?: string; page?: string }) {
+    this.db
+      .prepare('INSERT OR REPLACE INTO settings VALUES (?,?)')
+      .run('client-view', JSON.stringify(view));
   }
   devices(): Device[] {
     return (this.db.prepare('SELECT data FROM devices').all() as { data: string }[]).map((r) =>
@@ -202,20 +232,32 @@ export class Store {
         if (
           t.stationId !== this.settings.stationId &&
           (t.senderId === this.settings.deviceId || t.recipientId === this.settings.deviceId)
-        )
-          stmt.run(`${t.stationId}:${t.id}`, JSON.stringify(t));
+        ) {
+          const key = `${t.stationId}:${t.id}`;
+          const previous = this.db
+            .prepare('SELECT data FROM remote_records WHERE id=?')
+            .get(key) as { data: string } | undefined;
+          const old = previous ? JSON.parse(previous.data) : undefined;
+          stmt.run(
+            key,
+            JSON.stringify({
+              ...t,
+              ...(old?.stationName && !t.stationName ? { stationName: old.stationName } : {}),
+            }),
+          );
+        }
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
       throw e;
     }
   }
-  received(): { id: string; name: string; path: string; size: number; receivedAt: number }[] {
+  received(): ReceivedFile[] {
     return (this.db.prepare('SELECT data FROM received_files').all() as { data: string }[])
       .map((r) => JSON.parse(r.data))
       .sort((a, b) => b.receivedAt - a.receivedAt);
   }
-  saveReceived(file: { id: string; name: string; path: string; size: number; receivedAt: number }) {
+  saveReceived(file: ReceivedFile) {
     this.db
       .prepare('INSERT OR REPLACE INTO received_files VALUES (?,?)')
       .run(file.id, JSON.stringify(file));
