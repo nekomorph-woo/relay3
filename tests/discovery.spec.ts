@@ -26,7 +26,9 @@ test('桌面自动发现可选择并配对，更换地址复用凭证，名称�
   await remote.startHub();
   const testPort = remote.hub.server.address().port;
   const application = await _electron.launch({
-    args: ['.'],
+    ...(process.env.RELAY3_PACKAGED_PATH
+      ? { executablePath: process.env.RELAY3_PACKAGED_PATH, args: [] }
+      : { args: ['.'] }),
     cwd: process.cwd(),
     env: { ...process.env, RELAY3_DATA_DIR: path.join(dir, 'client') },
   });

@@ -50,7 +50,9 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
   }
   async function launch() {
     application = await _electron.launch({
-      args: ['.'],
+      ...(process.env.RELAY3_PACKAGED_PATH
+        ? { executablePath: process.env.RELAY3_PACKAGED_PATH, args: [] }
+        : { args: ['.'] }),
       cwd: process.cwd(),
       env: { ...process.env, RELAY3_DATA_DIR: path.join(dir, 'client') },
     });
