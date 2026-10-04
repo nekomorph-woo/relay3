@@ -75,7 +75,7 @@ test.afterAll(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 test('桌面开启中转站，手机客户端连接，双向传输并保留记录', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站' }).click();
   await expect(desktop.getByRole('heading', { name: '中转站已开启' })).toBeVisible();
   await desktop.getByRole('button', { name: '本机加入' }).click();
@@ -136,7 +136,7 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
   await expect(desktop.locator('.record-row')).toHaveCount(2);
   await expect(desktop.locator('.record-row').first()).toContainText('已完成');
-  await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机存储', exact: true }).click();
   await expect(desktop.locator('.cache-row:not(.received-row)')).toHaveCount(2);
   await desktop.getByLabel('选择所有可清理文件').check();
   await desktop.getByRole('button', { name: /清理所选/ }).click();
@@ -175,7 +175,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
     '已断开',
   );
   await expect(desktop.locator('.timeline')).toContainText('断开');
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '关闭中转站', exact: true }).click();
   await desktop.locator('dialog').getByRole('button', { name: '关闭中转站', exact: true }).click();
   await expect(desktop.locator('dialog')).toHaveCount(0);
@@ -184,7 +184,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await desktop.getByRole('spinbutton', { name: '完成后保留时间（小时）' }).fill('2');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
-  await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机存储', exact: true }).click();
   await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
   await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
   await expect(desktop.locator('.storage-location-card')).toHaveCount(3);
@@ -240,7 +240,7 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await expect(desktop.locator('.record-row')).toHaveCount(3);
     await expect(desktop.locator('.record-row').first()).toContainText('跨站文件.txt');
     expect((await admin('/status')).running).toBeTruthy();
-    await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+    await desktop.getByRole('button', { name: '本机存储', exact: true }).click();
     await expect(desktop.locator('.received-row')).toHaveCount(2);
     await desktop
       .locator('.received-row')
@@ -261,7 +261,7 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
 });
 
 test('原生复制、各终端更换身份、按设备删除与离线清理选项', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '复制配对链接', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('已复制');
   const clipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
@@ -315,12 +315,12 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
 });
 
 test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚动', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
   const dismiss = desktop.getByRole('button', { name: '关闭提示', exact: true });
   if (await dismiss.isVisible()) await dismiss.click();
-  const pages = ['文件传输', '群聊大厅', '中转站', '连接设备', '收发记录', '文件存储', '设置'];
+  const pages = ['文件传输', '群聊大厅', '本机中转站', '连接设备', '收发记录', '本机存储', '设置'];
   for (const size of [
     { width: 1220, height: 840 },
     { width: 1080, height: 720 },
@@ -341,7 +341,7 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
         await desktop.screenshot({ path: `test-results/native-page-${index}.png` });
     }
   }
-  await desktop.getByRole('button', { name: '文件存储', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机存储', exact: true }).click();
   await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
   await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
   expect(await desktop.title()).toBe('Relay3');
@@ -375,7 +375,7 @@ test('独立中转站名称、历史实时探测、侧栏用户与系统关于�
   await expect
     .poll(() => app.evaluate(() => (globalThis as any).githubUrl))
     .toBe('https://github.com/nekomorph-woo/relay3');
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await expect(desktop.locator('.station-name')).toHaveText('客厅中转站');
   await expect(desktop.getByLabel('选择局域网地址').locator('option').first()).toContainText(
     '客厅中转站',
@@ -415,7 +415,7 @@ test('独立中转站名称、历史实时探测、侧栏用户与系统关于�
 });
 
 test('四类平台标签覆盖设备与群聊，清除设备后历史消息仍有标记', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');

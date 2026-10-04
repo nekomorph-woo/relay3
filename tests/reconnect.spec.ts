@@ -88,7 +88,7 @@ async function restart() {
   boot = await desktop.evaluate(() => window.relay3!.bootstrap());
 }
 test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢复', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
@@ -103,7 +103,7 @@ test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢�
   ).toBe(original.token);
   await restart();
   expect(Object.values(boot.savedHubs).some((s: any) => s.token === original.token)).toBeTruthy();
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
@@ -123,7 +123,7 @@ test('本机加入支持断开后重连、应用重启、旧版丢失凭证恢�
     env: { ...process.env, RELAY3_DATA_DIR: dir },
   });
   desktop = await app.firstWindow();
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
@@ -157,6 +157,9 @@ test('桌面连接远端后跨重启重连，手机重连不消费数字配对�
     );
     await restart();
     expect(boot.savedHubs[remoteBase].token).toBe(original.token);
+    await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
+    await desktop.getByRole('button', { name: '断开中转站', exact: true }).click();
+    await expect(desktop.locator('main')).not.toHaveAttribute('data-connected', 'true');
     await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
     await desktop
       .locator('.remembered')

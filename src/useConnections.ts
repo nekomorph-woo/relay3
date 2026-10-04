@@ -11,6 +11,7 @@ export interface ClientConnection {
 export function useConnections(desktop: boolean, inform: (text: string, error?: boolean) => void) {
   const [connections, setConnections] = useState<Record<string, ClientConnection>>({});
   const [activeId, setActiveId] = useState('');
+  const [retry, setRetry] = useState(0);
   const current = useRef(connections);
   const selected = useRef(activeId);
   const notify = useRef(inform);
@@ -59,6 +60,16 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
   );
   const add = useCallback(
     (session: Session, hub: HubState | null = null, activate = true) => {
+      if (current.current[session.stationId]?.status === 'expired') {
+        const resource = sockets.current.get(session.stationId);
+        if (resource) {
+          resource.stopped = true;
+          clearTimeout(resource.timer);
+          resource.socket?.close();
+          sockets.current.delete(session.stationId);
+        }
+        setRetry((old) => old + 1);
+      }
       if (!desktop)
         for (const id of Object.keys(current.current)) if (id !== session.stationId) remove(id);
       update((old) => ({
@@ -67,6 +78,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
           session,
           hub: hub ?? old[session.stationId]?.hub ?? null,
           status:
+            old[session.stationId]?.status !== 'expired' &&
             old[session.stationId]?.session.base === session.base &&
             old[session.stationId]?.session.token === session.token
               ? old[session.stationId].status
@@ -179,7 +191,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
       }
       connect();
     }
-  }, [signature, update, updateHub]);
+  }, [signature, retry, update, updateHub]);
   useEffect(
     () => () => {
       for (const resource of sockets.current.values()) {

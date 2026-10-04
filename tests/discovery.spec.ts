@@ -58,7 +58,7 @@ test('桌面自动发现可选择并配对，更换地址复用凭证，名称�
     // 仅保留旧地址的凭证，验证新发现地址按 stationId 找回凭证。
     await page.evaluate(async (connection) => {
       const boot = await window.relay3!.bootstrap();
-      const old = { ...connection, base: 'http://192.168.250.250:42830' };
+      const old = { ...connection, base: 'http://192.168.250.250:42830', autoConnect: false };
       localStorage.setItem('relay3-hubs', JSON.stringify({ [old.base]: old }));
       const response = await fetch(boot.controlUrl + '/admin/client/session', {
         method: 'POST',

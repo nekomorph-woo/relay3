@@ -95,7 +95,7 @@ async function chat(page: Page, route: string, body?: unknown) {
   );
 }
 test('群聊原文展示、端侧密文、离线授权与手机布局', async () => {
-  await desktop.getByRole('button', { name: '中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '开启中转站' }).click();
   await desktop.getByRole('button', { name: '本机加入' }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');

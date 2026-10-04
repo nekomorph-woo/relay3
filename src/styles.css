@@ -3380,3 +3380,20 @@ main.native-page {
     display: contents;
   }
 }
+@media (min-width: 761px) and (max-height: 700px) {
+  .sidebar:has(.station-switcher) {
+    padding-top: 16px;
+    padding-bottom: 12px;
+  }
+  .sidebar:has(.station-switcher) nav {
+    margin-top: 12px;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .sidebar:has(.station-switcher) .nav-item {
+    height: 34px;
+  }
+  .sidebar:has(.station-switcher) .nav-group-label {
+    padding-top: 6px;
+  }
+}
