@@ -75,8 +75,8 @@ function senderAllowed(event: Electron.IpcMainInvokeEvent) {
 }
 async function createWindow() {
   window = new BrowserWindow({
-    width: 1220,
-    height: 840,
+    width: 1404,
+    height: 942,
     minWidth: 800,
     minHeight: 600,
     title: 'Relay3',
