@@ -4,6 +4,10 @@ writeFileSync(
   `
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
+ startDiscovery: () => ipcRenderer.invoke('discovery-start'),
+ discoverySnapshot: () => ipcRenderer.invoke('discovery-snapshot'),
+ refreshDiscovery: () => ipcRenderer.invoke('discovery-refresh'),
+ stopDiscovery: () => ipcRenderer.invoke('discovery-stop'),
  diagnosticInfo: () => ipcRenderer.invoke('diagnostic-info'),
  exportDiagnostics: () => ipcRenderer.invoke('diagnostic-export'),
  clearDiagnostics: () => ipcRenderer.invoke('diagnostic-clear'),

@@ -69,6 +69,10 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      startDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
+      discoverySnapshot(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
+      refreshDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
+      stopDiscovery(): Promise<void>;
       diagnosticInfo(): Promise<{ path: string; crashPath: string; files: number; bytes: number }>;
       exportDiagnostics(): Promise<string | null>;
       clearDiagnostics(): Promise<boolean>;

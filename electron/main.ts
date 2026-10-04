@@ -21,6 +21,7 @@ import {
 } from 'electron';
 import { generateIdentity, validIdentity } from '../src/chat/crypto';
 import { RelayService } from '../server/service';
+import { StationDiscovery, probeStation } from './discovery';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
@@ -43,6 +44,10 @@ const appIconPath = path.join(dirname, '../dist/relay3-desktop.png');
 app.setName('Relay3');
 app.setPath('userData', process.env.RELAY3_DATA_DIR ?? path.join(app.getPath('appData'), 'relay3'));
 let service: RelayService;
+// 与页面使用同一套直连 Chromium 网络栈，避免发现探测和连接走不同代理设置。
+const discovery = new StationDiscovery(undefined, (base, signal) =>
+  probeStation(base, signal, (url, options) => net.fetch(url.toString(), options)),
+);
 let window: BrowserWindow | null = null;
 let quitting = false;
 const downloads = new Map<string, AbortController>();
@@ -130,6 +135,17 @@ else {
         path.join(app.getPath('downloads'), 'relay3'),
       );
       await session.defaultSession.setProxy({ mode: 'direct' });
+      service.onHubChanged = () =>
+        discovery.publish(
+          service.hub
+            ? {
+                stationId: service.store.settings.stationId,
+                name: service.store.settings.stationName,
+                port: (service.hub.server.address() as { port: number }).port,
+                platform: process.platform === 'darwin' ? 'Mac' : 'PC',
+              }
+            : undefined,
+        );
       await service.startControl();
       if (process.env.RELAY3_TEST_HUB === '1') await service.startHub();
       Menu.setApplicationMenu(null);
@@ -152,6 +168,10 @@ else {
           }
         });
       handler('diagnostic-info', diagnosticInfo);
+      handler('discovery-start', () => discovery.start());
+      handler('discovery-snapshot', () => discovery.snapshot());
+      handler('discovery-refresh', () => discovery.refresh());
+      handler('discovery-stop', () => discovery.stop());
       handler('diagnostic-export', () => exportDiagnostics(window!));
       handler('diagnostic-clear', () => clearDiagnostics(window!));
       let diagnosticCount = 0,
@@ -363,7 +383,10 @@ else {
       void service
         .close()
         .catch((error) => diagnostic('error', 'app.shutdown-failed', { error }))
-        .finally(() => app.quit());
+        .finally(async () => {
+          await discovery.close();
+          app.quit();
+        });
     }
   });
 }

@@ -91,6 +91,14 @@ export class RelayService {
     this.store.db.prepare('DELETE FROM devices WHERE id=?').run(id);
   }
   hub: FastifyInstance | null = null;
+  onHubChanged?: () => void;
+  notifyHubChanged() {
+    try {
+      this.onHubChanged?.();
+    } catch (error) {
+      diagnostic('warn', 'station.discovery-update-failed', { error });
+    }
+  }
   control: FastifyInstance | null = null;
   controlUrl = '';
   clients = new Map<string, { socket: WebSocket; connection: number; alive: boolean }>();
@@ -615,6 +623,7 @@ export class RelayService {
           this.update(t, { expiresAt: t.completedAt + s.retentionHours * 3600_000 });
       this.cleanup();
       this.broadcast();
+      this.notifyHubChanged();
       return { ...this.status(), ...(warning ? { warning } : {}) };
     });
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -989,6 +998,7 @@ export class RelayService {
     try {
       await app.listen({ host: '0.0.0.0', port: this.store.settings.port });
       this.hub = app;
+      this.notifyHubChanged();
     } catch (e: any) {
       await app.close();
       if (e.code === 'EADDRINUSE')
@@ -1013,6 +1023,7 @@ export class RelayService {
     );
     const app = this.hub;
     this.hub = null;
+    this.notifyHubChanged();
     await Promise.all(closing);
     await app.close();
   }

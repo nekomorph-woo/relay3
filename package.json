@@ -25,6 +25,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^10.1.5",
     "@fastify/websocket": "^11.2.0",
+    "bonjour-service": "1.4.4",
     "electron-log": "5.4.4",
     "fastify": "^5.12.0",
     "ws": "^8.18.3"
@@ -86,7 +87,13 @@
         "en",
         "zh_CN"
       ],
-      "identity": "-"
+      "identity": "-",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Relay3 需要访问局域网，以发现中转站并与其他设备传输文件和消息。",
+        "NSBonjourServices": [
+          "_relay3._tcp"
+        ]
+      }
     },
     "dmg": {
       "title": "Relay3",
