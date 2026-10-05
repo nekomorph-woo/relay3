@@ -42,6 +42,15 @@ export function EmojiButton({ onSelect }: { onSelect: (text: string) => void }) 
           },
         });
         target.current.replaceChildren(picker);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (pop.current && anchor.current && innerWidth > 600) {
+              const r = anchor.current.getBoundingClientRect();
+              const h = pop.current.offsetHeight;
+              pop.current.style.top = `${Math.max(8, Math.min(r.top - h - 8, innerHeight - h - 8))}px`;
+            }
+          }),
+        );
       })
       .catch(() => setError('表情面板加载失败，请重试'));
     return () => {
@@ -52,6 +61,7 @@ export function EmojiButton({ onSelect }: { onSelect: (text: string) => void }) 
     <>
       <button
         type="button"
+        className="emoji-trigger"
         aria-label="选择表情"
         ref={anchor}
         aria-expanded={open}

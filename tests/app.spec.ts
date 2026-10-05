@@ -88,8 +88,11 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
-  await desktop.getByRole('button', { name: '接收设备', exact: true }).click();
-  await desktop.getByRole('option').filter({ hasText: '测试手机' }).click();
+  await desktop
+    .locator('.delivery-recipients label')
+    .filter({ hasText: '测试手机' })
+    .locator('input')
+    .check();
   const filename =
     '这是一份用于检查手机收到电脑文件时长文件名布局的测试报告_2026年10月_项目资料与附件说明.txt';
   const content = Buffer.from('relay3 桌面发给手机\n'.repeat(120000));
@@ -111,17 +114,14 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   }
   await mobile.setViewportSize({ width: 375, height: 812 });
   await mobile.screenshot({ path: 'test-results/mobile-long-filename.png', fullPage: true });
-  await incoming.getByRole('button', { name: '接收', exact: true }).click();
-  await expect(incoming.getByRole('button', { name: '下载文件', exact: true })).toBeVisible();
   const downloadPromise = mobile.waitForEvent('download');
-  await incoming.getByRole('button', { name: '下载文件', exact: true }).click();
+  await incoming.getByRole('button', { name: '接收', exact: true }).click();
   const download = await downloadPromise;
   await download.saveAs(path.join(dir, 'mobile-download.txt'));
   expect(readFileSync(path.join(dir, 'mobile-download.txt'))).toEqual(content);
   await incoming.getByRole('button', { name: '确认收到' }).click();
-  await expect(incoming).toHaveCount(0);
-  await mobile.getByRole('button', { name: '接收设备', exact: true }).click();
-  await mobile.locator(`[role="option"][data-device-id="${boot.deviceId}"]`).click();
+  await expect(incoming).toContainText('可重新下载');
+  await mobile.locator(`.delivery-recipients [data-device-id="${boot.deviceId}"] input`).check();
   const back = Buffer.from('手机发送到电脑的文件');
   await mobile
     .getByLabel('选择待发送文件')
@@ -129,13 +129,12 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await mobile.getByRole('button', { name: '发送', exact: true }).click();
   const receive = desktop.locator('.transfer-row').filter({ hasText: '手机文件.txt' });
   await receive.getByRole('button', { name: '接收', exact: true }).click();
-  await expect(receive.getByRole('button', { name: '下载文件', exact: true })).toBeVisible();
-  await receive.getByRole('button', { name: '下载文件', exact: true }).click();
+
   await expect(receive).toHaveCount(0);
   expect(readFileSync(path.join(dir, 'received', '手机文件.txt'))).toEqual(back);
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
   await expect(desktop.locator('.record-row')).toHaveCount(2);
-  await expect(desktop.locator('.record-row').first()).toContainText('已完成');
+  await expect(desktop.locator('.record-row').first()).toContainText('已接收');
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
   await expect(desktop.locator('.cache-row:not(.received-row)')).toHaveCount(2);
   await desktop.getByLabel('选择所有可清理文件').check();
@@ -181,7 +180,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await expect(desktop.locator('dialog')).toHaveCount(0);
   await expect(desktop.getByRole('heading', { name: '开启这台电脑的中转站' })).toBeVisible();
   await desktop.getByRole('button', { name: '设备', exact: true }).click();
-  await desktop.getByRole('spinbutton', { name: '完成后保留时间（小时）' }).fill('2');
+  await desktop.getByRole('spinbutton', { name: '接收缓冲结束后保留时间（小时）' }).fill('2');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
@@ -240,8 +239,9 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await remotePage.getByLabel('设备名称').fill('远端手机');
     await remotePage.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await expect(remotePage.locator('main')).toHaveAttribute('data-connected', 'true');
-    await remotePage.getByRole('button', { name: '接收设备', exact: true }).click();
-    await remotePage.locator(`[role="option"][data-device-id="${boot.deviceId}"]`).click();
+    await remotePage
+      .locator(`.delivery-recipients [data-device-id="${boot.deviceId}"] input`)
+      .check();
     const data = Buffer.from('跨中转站客户端记录');
     await remotePage
       .getByLabel('选择待发送文件')
@@ -250,7 +250,7 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
     const row = desktop.locator('.transfer-row').filter({ hasText: '跨站文件.txt' });
     await row.getByRole('button', { name: '接收', exact: true }).click();
-    await row.getByRole('button', { name: '下载文件', exact: true }).click();
+
     await expect(row).toHaveCount(0);
     expect(readFileSync(path.join(dir, 'received', '跨站文件.txt'))).toEqual(data);
     await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
@@ -520,19 +520,12 @@ test('四类平台标签覆盖设备与群聊，清除设备后历史消息仍�
   await expect(desktop.locator('.device-self svg.lucide-airplay')).toBeVisible();
   await desktop.screenshot({ path: 'test-results/v035-platform-devices.png' });
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
-  await desktop.getByRole('button', { name: '接收设备', exact: true }).press('ArrowDown');
-  await expect(desktop.getByRole('listbox')).toBeVisible();
-  await expect(
-    desktop
-      .getByRole('option')
-      .filter({ hasText: 'Android测试终端' })
-      .locator('.device-platform-tag'),
-  ).toHaveAttribute('aria-label', '安卓手机');
-  await desktop.getByRole('option').filter({ hasText: 'Android测试终端' }).click();
-  await expect(desktop.locator('.device-select-trigger .device-platform-tag')).toHaveAttribute(
-    'aria-label',
-    '安卓手机',
-  );
+  await desktop.getByLabel('搜索接收设备').fill('Android测试终端');
+  const recipient = desktop
+    .locator('.delivery-recipients label')
+    .filter({ hasText: 'Android测试终端' });
+  await expect(recipient.locator('.device-platform-tag')).toHaveAttribute('aria-label', '安卓手机');
+  await recipient.locator('input').check();
   await desktop.getByRole('button', { name: '群聊大厅', exact: true }).click();
   for (const [name, title] of [
     ['PC', 'PC'],

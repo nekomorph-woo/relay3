@@ -4140,14 +4140,14 @@ main.native-page {
 .background-task-list progress {
   width: 100%;
 }
-.station-switch-trigger {
-  display: flex !important;
+.station-switcher .station-switch-trigger {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px 12px !important;
-  border: 1px solid var(--color-rule) !important;
-  background: var(--color-surface) !important;
+  padding: 9px 12px;
+  border: 1px solid var(--color-rule);
+  background: var(--color-surface);
   width: 100%;
 }
 .station-switch-trigger > span {
@@ -4267,5 +4267,134 @@ textarea {
 @media (max-width: 600px) {
   .emoji-popover {
     width: calc(100vw - 16px);
+  }
+}
+.dropzone.compact-file-picker {
+  min-height: 76px;
+  margin: 12px 0;
+  height: auto;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 2px 12px;
+  text-align: left;
+  align-content: center;
+}
+.compact-file-picker > svg {
+  grid-row: 1/3;
+  align-self: center;
+}
+.compact-file-picker strong,
+.compact-file-picker > span {
+  grid-column: 2;
+  margin: 0;
+}
+.delivery-recipients {
+  max-height: none;
+  overflow: visible;
+}
+.recipient-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.delivery-recipients .recipient-search {
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+}
+.recipient-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 6px 10px;
+}
+.recipient-tools select {
+  width: 110px;
+  padding: 6px 28px 6px 10px;
+}
+.recipient-page {
+  min-height: 54px;
+}
+.recipient-page label {
+  min-height: 48px;
+}
+.recipient-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  font-size: var(--text-xs);
+}
+.recipient-pagination > span {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--color-muted);
+}
+.recipient-pagination button {
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+}
+.receive-buffer > div {
+  flex-wrap: wrap;
+}
+.receive-buffer .buffer-presets {
+  display: flex;
+  gap: 6px;
+}
+.retry-file {
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.retry-file input {
+  display: block;
+  max-width: 180px;
+}
+.background-task-popover,
+.station-switch-popover,
+.emoji-popover {
+  inset: auto;
+}
+.emoji-popover {
+  max-height: min(480px, calc(100dvh - 16px));
+}
+.chat-send-row .emoji-trigger,
+.emoji-popover .emoji-close {
+  background: transparent;
+  color: var(--color-ink);
+  border: 0;
+  padding: 6px;
+}
+.recipient-tools select {
+  white-space: nowrap;
+}
+.transfer-screen .composer {
+  overflow: hidden;
+}
+.send-config {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+.send-config .selected-files {
+  flex: none;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.composer > .send-footer {
+  flex-shrink: 0;
+}
+@media (max-width: 768px) {
+  .send-config {
+    overflow: visible;
+    flex: none;
+  }
+  .transfer-screen .composer {
+    overflow: visible;
   }
 }

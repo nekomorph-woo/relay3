@@ -1,8 +1,16 @@
+import { TransferName } from './FileTask';
+import type { Session } from '../api';
 import { useEffect, useRef, useState } from 'react';
-import { LoaderCircle, Upload, Download, ScanLine, Trash2, X } from 'lucide-react';
+import { LoaderCircle, Upload, Download, ScanLine, Trash2, X, AlertCircle } from 'lucide-react';
 import { sizes } from '../api';
 import type { BackgroundTask } from '../../server/tasks';
-export function BackgroundTasks({ management }: { management: (path: string) => Promise<any> }) {
+export function BackgroundTasks({
+  management,
+  session,
+}: {
+  management: (path: string) => Promise<any>;
+  session?: Session;
+}) {
   const [tasks, setTasks] = useState<BackgroundTask[]>([]),
     [open, setOpen] = useState(false);
   const manager = useRef(management);
@@ -30,6 +38,7 @@ export function BackgroundTasks({ management }: { management: (path: string) => 
     pop.current.style.left = `${Math.min(r.left, innerWidth - 370)}px`;
     pop.current.style.bottom = `${innerHeight - r.top + 8}px`;
   }, [open]);
+  const failed = tasks.some((t) => t.state === 'failed');
   const count = tasks.filter((t) => t.state === 'running').length;
   const icons = { upload: Upload, download: Download, scan: ScanLine, cleanup: Trash2 };
   return (
@@ -42,6 +51,7 @@ export function BackgroundTasks({ management }: { management: (path: string) => 
       >
         <LoaderCircle size={17} className={count ? 'task-spinning' : ''} />
         <span>后台任务{count ? ` · ${count}` : ''}</span>
+        {failed && <AlertCircle size={13} aria-label="有任务失败" />}
       </button>
       {open && (
         <div
@@ -66,7 +76,21 @@ export function BackgroundTasks({ management }: { management: (path: string) => 
                   <article key={t.id}>
                     <Icon size={16} />
                     <div>
-                      <strong>{t.name}</strong>
+                      <strong>
+                        {session && t.fileId ? (
+                          <TransferName
+                            t={{
+                              name: t.name,
+                              fileId: t.fileId,
+                              chatMessageId: t.name === '未知文件' ? 1 : undefined,
+                              stationId: session.stationId,
+                            }}
+                            session={session}
+                          />
+                        ) : (
+                          t.name
+                        )}
+                      </strong>
                       <small>
                         {t.deviceName} ·{' '}
                         {t.state === 'running'
@@ -80,6 +104,7 @@ export function BackgroundTasks({ management }: { management: (path: string) => 
                         {['upload', 'download'].includes(t.kind)
                           ? `${sizes(t.bytes)} / ${sizes(t.total)}`
                           : `已处理 ${t.bytes} / ${t.total}`}
+                        {t.kind === 'cleanup' ? ` · 已释放 ${sizes(t.releasedBytes ?? 0)}` : ''}
                         {t.error ? ` · ${t.error}` : ''}
                       </small>
                     </div>

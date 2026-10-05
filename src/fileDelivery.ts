@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { request, uuid, type Session, type Transfer } from './api';
 import type { SharedFile } from '../server/files';
 import type { Envelope } from './chat/types';
+const draftIds = new WeakMap<File, Map<string, string>>();
 export async function deliverFile(
   session: Session,
   file: File,
@@ -10,7 +11,11 @@ export async function deliverFile(
   options: { id?: string; envelope?: Envelope; remark?: string; remarkStyle?: string } = {},
   progress?: (bytes: number) => void,
 ) {
-  const id = options.id ?? uuid();
+  const signature = JSON.stringify([session.stationId, [...recipients].sort(), bufferMinutes]);
+  const ids = draftIds.get(file) ?? new Map<string, string>();
+  draftIds.set(file, ids);
+  const id = options.id ?? ids.get(signature) ?? uuid();
+  ids.set(signature, id);
   const hash = sha256.create();
   const reader = file.stream().getReader();
   while (true) {

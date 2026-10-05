@@ -82,6 +82,7 @@ export function ChatHall({
     [chatFiles, setChatFiles] = useState<File[]>([]),
     [fileRecipients, setFileRecipients] = useState<string[]>([]),
     [fileBuffer, setFileBuffer] = useState(stored('relay3-receive-buffer', 1440));
+  const fileDraftIds = useRef(new WeakMap<File, string>());
   const [fileStates, setFileStates] = useState<Record<string, SharedFile>>({});
   const [remark, setRemark] = useState(''),
     [remarkStyle, setRemarkStyle] = useState<'hint' | 'note' | 'clue'>('note');
@@ -167,7 +168,8 @@ export function ChatHall({
       });
       save('relay3-receive-buffer', fileBuffer);
       for (const file of chatFiles) {
-        const id = uuid();
+        const id = fileDraftIds.current.get(file) ?? uuid();
+        fileDraftIds.current.set(file, id);
         const envelope = encryptMessage(
           file.name,
           recipients,
@@ -189,6 +191,10 @@ export function ChatHall({
         });
         setChatFiles((old) => old.filter((f) => f !== file));
       }
+      const nextRecent = { ...recent };
+      for (const id of fileRecipients) nextRecent[id] = Date.now();
+      setRecent(nextRecent);
+      save(`relay3-chat-recent:${session.stationId}:${session.id}`, nextRecent);
       setFileComposer(false);
       setRemark('');
       onFilesChanged();
@@ -451,51 +457,18 @@ export function ChatHall({
           </label>
           {encrypted && (
             <>
-              <fieldset className="chat-recipients">
-                <legend>密文接收设备 · 含发送者</legend>
-                {selected.some((id) => !devices.some((d) => d.id === id && d.publicKey)) && (
-                  <div className="notice">
-                    接收名单包含已清除或密钥不可用的设备。
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelected((ids) =>
-                          ids.filter((id) => devices.some((d) => d.id === id && d.publicKey)),
-                        );
-                        draftId.current = uuid();
-                      }}
-                    >
-                      移除失效接收设备
-                    </button>
-                  </div>
-                )}
-                {devices.map((d) => (
-                  <label key={d.id}>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(d.id)}
-                      disabled={d.id === session.id || !d.publicKey || busy}
-                      onChange={(e) => {
-                        setSelected((ids) =>
-                          e.target.checked ? [...ids, d.id] : ids.filter((id) => id !== d.id),
-                        );
-                        draftId.current = uuid();
-                      }}
-                    />
-                    <DeviceAvatar id={d.id} name={d.name} size={28} />
-                    <span>
-                      {d.name}
-                      <DeviceTag platform={d.platform} />
-                      {d.id === session.id ? '（本机，固定包含）' : ''}
-                      <small>
-                        {d.online ? '在线' : '离线，上线后可读取'}
-                        {!d.publicKey ? ' · 尚未登记公钥，不可选' : ''}
-                        {recent[d.id] ? ' · 最近选过' : ''}
-                      </small>
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
+              <Recipients
+                devices={devices}
+                selected={selected}
+                onChange={(ids) => {
+                  setSelected(ids);
+                  draftId.current = uuid();
+                }}
+                encrypted
+                disabled={busy}
+                fixedIds={[session.id]}
+                preserveOrder
+              />
               <details className="chat-remark-editor">
                 <summary>公开备注（可选）</summary>
                 <div className="chat-remark-input">
@@ -888,11 +861,12 @@ export function ChatHall({
             >
               <div className="chat-compose-body">
                 <label
-                  className="dropzone"
+                  className="dropzone compact-file-picker"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
-                    setChatFiles((old) => [...old, ...Array.from(e.dataTransfer.files)]);
+                    const dropped = Array.from(e.dataTransfer.files);
+                    setChatFiles((old) => [...old, ...dropped]);
                   }}
                 >
                   <FileUp size={26} />
@@ -903,7 +877,8 @@ export function ChatHall({
                     type="file"
                     multiple
                     onChange={(e) => {
-                      setChatFiles((old) => [...old, ...Array.from(e.target.files ?? [])]);
+                      const picked = Array.from(e.target.files ?? []);
+                      setChatFiles((old) => [...old, ...picked]);
                       e.target.value = '';
                     }}
                   />
@@ -928,6 +903,7 @@ export function ChatHall({
                   selected={fileRecipients}
                   onChange={setFileRecipients}
                   encrypted
+                  preserveOrder
                   disabled={busy}
                 />
                 <ReceiveBuffer value={fileBuffer} onChange={setFileBuffer} />

@@ -163,7 +163,7 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await tab('接收文件');
   await expect(page.locator('.cache-row:not(.received-row)')).toHaveCount(0);
   const row = page.locator('.received-row').first();
-  const content = await row.locator('div').boundingBox();
+  const content = await row.locator('div').first().boundingBox();
   const badge = await row.locator('.badge').boundingBox();
   expect(badge!.x).toBeGreaterThan(content!.x + content!.width);
   const directory = page.getByRole('button', { name: '接收文件位置', exact: true });
@@ -479,12 +479,14 @@ test('两个中转站的传输列表各自恢复位置，连接弹窗固定提�
     await expect(page.locator('.transfer-row')).toHaveCount(35);
     await expect.poll(() => top('.transfer-items')).toBe(0);
     await scroll('.transfer-items', 600);
-    await page.getByRole('combobox', { name: '切换中转站' }).selectOption(localId);
+    await page.getByRole('button', { name: '切换中转站' }).click();
+    await page.locator(`[role="option"][data-station-id="${localId}"]`).click();
     await expect(page.locator('.transfer-row')).toHaveCount(30);
     await expect.poll(() => top('.transfer-items')).toBeCloseTo(360, 0);
+    await page.getByRole('button', { name: '切换中转站' }).click();
     await page
-      .getByRole('combobox', { name: '切换中转站' })
-      .selectOption(remote.store.settings.stationId);
+      .locator(`[role="option"][data-station-id="${remote.store.settings.stationId}"]`)
+      .click();
     await expect(page.locator('.transfer-row')).toHaveCount(35);
     await expect.poll(() => top('.transfer-items')).toBeCloseTo(600, 0);
   } finally {

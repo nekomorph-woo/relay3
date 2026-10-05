@@ -66,6 +66,7 @@ export class RelayService {
       if (activeStatuses.includes(t.status) && (t.senderId === id || t.recipientId === id)) {
         this.update(t, { status: 'cancelled', error: '设备身份已更换或已被清除' });
         this.streams.get(t.id)?.abort();
+        if (t.fileId && t.senderId === id) this.streams.get(t.fileId)?.abort();
       }
   }
   revokeDevice(id: string) {
@@ -242,6 +243,7 @@ export class RelayService {
         entries.push({
           id,
           folder,
+          chatMessageId: f?.chatMessageId,
           path: filename,
           bytes: stat.size,
           name: f?.name ?? t?.name ?? `未关联文件 ${id}`,
@@ -264,8 +266,17 @@ export class RelayService {
     if (!/^[a-zA-Z0-9-]+$/.test(id)) fail('文件标识无效');
     if (this.streams.has(id)) fail('文件正在传输，请先取消', 409);
     const t = this.store.transfer(id);
-    for (const folder of ['partial', 'ready'])
-      rmSync(path.join(this.store.settings.cacheDir, folder, id), { force: true });
+    const task = this.tasks.start('cleanup', t?.name ?? '清理缓存', 1);
+    try {
+      for (const folder of ['partial', 'ready'])
+        rmSync(path.join(this.store.settings.cacheDir, folder, id), { force: true });
+      this.tasks.progress(task, 1);
+      this.tasks.released(task, t?.uploaded ?? 0);
+      this.tasks.finish(task);
+    } catch (error: any) {
+      this.tasks.finish(task, '缓存清理失败');
+      throw error;
+    }
     if (t)
       this.update(t, {
         cleanedAt: Date.now(),
@@ -956,6 +967,7 @@ export class RelayService {
       const controller = new AbortController();
       this.streams.set(t.id, controller);
       this.update(t, { status: 'uploading', startedAt: Date.now(), error: null });
+      const task = this.tasks.start('upload', t.name, t.size, d.name);
       let bytes = 0,
         lastSave = 0;
       const hash = createHash('sha256');
@@ -965,6 +977,7 @@ export class RelayService {
             bytes += chunk.length;
             if (bytes > t.size) return cb(new Error('上传字节数超过声明大小'));
             hash.update(chunk);
+            this.tasks.progress(task, bytes);
             if (Date.now() - lastSave > 300) {
               lastSave = Date.now();
               this.update(t, { uploaded: bytes }, false);
@@ -987,8 +1000,10 @@ export class RelayService {
           uploadDuration: Date.now() - (this.getTransfer(t.id).startedAt ?? Date.now()),
           sha256: hash.digest('hex'),
         });
+        this.tasks.finish(task);
         return { ok: true };
       } catch (e: any) {
+        this.tasks.finish(task, '上传未完成');
         diagnostic(e.name === 'AbortError' ? 'warn' : 'error', 'transfer.upload-failed', {
           error: e,
           bytes,
@@ -1026,11 +1041,13 @@ export class RelayService {
       this.streams.set(t.id, controller);
       this.update(t, { status: 'downloading', downloaded: 0 });
       const downloadStarted = Date.now();
+      const task = this.tasks.start('download', t.name, t.size, d.name);
       const stream = createReadStream(this.file(t));
       let bytes = 0,
         lastSave = 0;
       stream.on('data', (chunk) => {
         bytes += chunk.length;
+        this.tasks.progress(task, bytes);
         if (Date.now() - lastSave > 300) {
           lastSave = Date.now();
           this.update(t, { downloaded: bytes }, false);
@@ -1042,6 +1059,7 @@ export class RelayService {
       const finish = (success: boolean) => {
         if (!this.streams.has(t.id)) return;
         this.streams.delete(t.id);
+        this.tasks.finish(task, success ? undefined : '下载中断');
         const current = this.getTransfer(t.id);
         if (current.status === 'cancelled') return;
         this.update(t, {

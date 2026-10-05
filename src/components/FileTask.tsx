@@ -25,10 +25,12 @@ export interface LocalFile {
   receivedAt: number;
 }
 const sharedRequests = new Map<string, Promise<SharedFile>>();
-export function useTransferName(t: Transfer, session?: Session) {
+type FileNameSource = Pick<Transfer, 'name' | 'fileId' | 'chatMessageId' | 'stationId'>;
+export function useTransferName(t: FileNameSource, session?: Session) {
   const [name, setName] = useState(t.name);
   useEffect(() => {
     let dead = false;
+    setName(t.name);
     if (!t.chatMessageId || !t.fileId || !session) return;
     const key = `${session.stationId}:${session.id}:${t.fileId}`;
     if (!sharedRequests.has(key))
@@ -62,7 +64,15 @@ export function useTransferName(t: Transfer, session?: Session) {
     return () => {
       dead = true;
     };
-  }, [t.fileId, t.chatMessageId, session?.stationId, session?.id, session?.token]);
+  }, [
+    t.fileId,
+    t.chatMessageId,
+    t.name,
+    t.stationId,
+    session?.stationId,
+    session?.id,
+    session?.token,
+  ]);
   return name;
 }
 export function FileTask({
@@ -95,19 +105,22 @@ export function FileTask({
   const local = localFiles.find((f) => f.stationId === t.stationId && f.transferId === t.id);
   const incoming = session?.id === t.recipientId;
   const canRepeat =
+    incoming &&
     !!t.lastDownloadedAt &&
     !t.cleanedAt &&
     Date.now() < (t.expiresAt ?? 0) &&
     t.status === 'completed' &&
     (!window.relay3 || !local?.exists);
   const status =
-    session?.id === t.senderId && t.fileId && t.status === 'pending'
-      ? '已上传 · 等待对方处理'
-      : t.cleanedAt && t.status !== 'completed'
-        ? '中转缓存已清理'
-        : canRepeat
-          ? '可重新下载'
-          : (labels[t.status] ?? t.status);
+    t.fileId && t.status === 'completed' && !canRepeat
+      ? '已接收'
+      : session?.id === t.senderId && t.fileId && t.status === 'pending'
+        ? '已上传 · 等待对方处理'
+        : t.cleanedAt && t.status !== 'completed'
+          ? '中转缓存已清理'
+          : canRepeat
+            ? '可重新下载'
+            : (labels[t.status] ?? t.status);
   const Icon =
     t.cleanedAt && t.status !== 'completed'
       ? FileWarning
@@ -296,7 +309,7 @@ export function UnknownFile({ cleaned = false }: { cleaned?: boolean }) {
   );
 }
 
-export function TransferName({ t, session }: { t: Transfer; session?: Session }) {
+export function TransferName({ t, session }: { t: FileNameSource; session?: Session }) {
   const name = useTransferName(t, session);
   return <>{name}</>;
 }

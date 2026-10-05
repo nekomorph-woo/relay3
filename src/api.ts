@@ -59,6 +59,7 @@ export interface CacheState {
   entries: {
     id: string;
     folder: string;
+    chatMessageId?: number;
     path: string;
     bytes: number;
     name: string;

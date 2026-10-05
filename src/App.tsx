@@ -864,7 +864,16 @@ export default function App() {
             </div>
           ))}
         </nav>
-        {boot && <BackgroundTasks management={management} />}
+        {boot && (
+          <BackgroundTasks
+            management={management}
+            session={
+              Object.values(multi.connections).find(
+                (c) => c.session.stationId === admin?.settings.stationId,
+              )?.session
+            }
+          />
+        )}
         <div className="sidebar-bottom">
           <span className="version">Relay3 {boot?.version ?? appVersion}</span>
           <div className="sidebar-utilities">
@@ -1178,66 +1187,72 @@ export default function App() {
                       <h2>发送文件</h2>
                       <span className="subtle">{online.length} 台可接收设备（含离线）</span>
                     </div>
-                    <Recipients
-                      devices={online}
-                      selected={recipientIds[multi.activeId] ?? []}
-                      onChange={(ids) =>
-                        setRecipientIds((old) => ({ ...old, [multi.activeId]: ids }))
-                      }
-                      disabled={!connected || busy}
-                    />
-                    <ReceiveBuffer value={bufferMinutes} onChange={setBufferMinutes} />
-                    <label
-                      className="dropzone"
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.add('dragging');
-                      }}
-                      onDragLeave={(e) => e.currentTarget.classList.remove('dragging')}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove('dragging');
-                        const dropped = Array.from(e.dataTransfer.files);
-                        setFiles((old) => [...old, ...dropped]);
-                      }}
-                    >
-                      <Upload size={28} />
-                      <strong>选择文件，或拖到这里</strong>
-                      <span>可选择多个文件</span>
-                      <input
-                        aria-label="选择待发送文件"
-                        type="file"
-                        multiple
-                        onChange={(e) => {
-                          const picked = Array.from(e.target.files ?? []);
-                          setFiles((old) => [...old, ...picked]);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
                     <ScrollArea
-                      memoryKey={`selected-files:${multi.activeId}`}
-                      className="selected-files"
-                      tabIndex={0}
-                      aria-label="待发送文件列表"
+                      memoryKey={`send-config:${multi.activeId}`}
+                      className="send-config"
+                      aria-label="文件发送配置"
                     >
-                      {files.map((f, i) => (
-                        <div
-                          className="file-line"
-                          key={i}
-                          data-scroll-id={`${f.name}:${f.lastModified}:${i}`}
-                        >
-                          <File size={17} />
-                          <span>{f.name}</span>
-                          <small>{sizes(f.size)}</small>
-                          <button
-                            aria-label={`移除 ${f.name}`}
-                            onClick={() => setFiles(files.filter((_, j) => i !== j))}
+                      <Recipients
+                        devices={online}
+                        selected={recipientIds[multi.activeId] ?? []}
+                        onChange={(ids) =>
+                          setRecipientIds((old) => ({ ...old, [multi.activeId]: ids }))
+                        }
+                        disabled={!connected || busy}
+                      />
+                      <ReceiveBuffer value={bufferMinutes} onChange={setBufferMinutes} />
+                      <label
+                        className="dropzone compact-file-picker"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('dragging');
+                        }}
+                        onDragLeave={(e) => e.currentTarget.classList.remove('dragging')}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('dragging');
+                          const dropped = Array.from(e.dataTransfer.files);
+                          setFiles((old) => [...old, ...dropped]);
+                        }}
+                      >
+                        <Upload size={28} />
+                        <strong>选择文件，或拖到这里</strong>
+                        <span>可选择多个文件</span>
+                        <input
+                          aria-label="选择待发送文件"
+                          type="file"
+                          multiple
+                          onChange={(e) => {
+                            const picked = Array.from(e.target.files ?? []);
+                            setFiles((old) => [...old, ...picked]);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <ScrollArea
+                        memoryKey={`selected-files:${multi.activeId}`}
+                        className="selected-files"
+                        tabIndex={0}
+                        aria-label="待发送文件列表"
+                      >
+                        {files.map((f, i) => (
+                          <div
+                            className="file-line"
+                            key={i}
+                            data-scroll-id={`${f.name}:${f.lastModified}:${i}`}
                           >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
+                            <File size={17} />
+                            <span>{f.name}</span>
+                            <small>{sizes(f.size)}</small>
+                            <button
+                              aria-label={`移除 ${f.name}`}
+                              onClick={() => setFiles(files.filter((_, j) => i !== j))}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </ScrollArea>
                     </ScrollArea>
                     <div className="send-footer">
                       <span className="subtle">
@@ -1325,7 +1340,7 @@ export default function App() {
                     </div>
                     <div>
                       <dt>文件保留</dt>
-                      <dd>完成后 {admin.settings.retentionHours} 小时</dd>
+                      <dd>接收缓冲结束后 {admin.settings.retentionHours} 小时</dd>
                     </div>
                   </dl>
                 </div>
@@ -1800,7 +1815,21 @@ export default function App() {
                               />
                               <File size={20} />
                               <div>
-                                <strong>{e.name}</strong>
+                                <strong>
+                                  <TransferName
+                                    t={{
+                                      name: e.name,
+                                      fileId: e.id,
+                                      chatMessageId: e.chatMessageId,
+                                      stationId: admin.settings.stationId,
+                                    }}
+                                    session={
+                                      Object.values(multi.connections).find(
+                                        (c) => c.session.stationId === admin.settings.stationId,
+                                      )?.session
+                                    }
+                                  />
+                                </strong>
                                 <small>
                                   {sizes(e.bytes)} ·{' '}
                                   {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
@@ -2078,7 +2107,7 @@ export default function App() {
                             <small>关闭中转站后可修改</small>
                           </label>
                           <label>
-                            完成后保留时间（小时）
+                            接收缓冲结束后保留时间（小时）
                             <input
                               type="number"
                               min={0.01}
@@ -2281,7 +2310,7 @@ export default function App() {
                 {
                   key: 'cache' as const,
                   title: '中转文件位置',
-                  remark: '暂存传输文件，完成后按保留时间清理。',
+                  remark: '暂存传输文件，接收缓冲结束后按保留时间清理。',
                   path: admin.settings.cacheDir,
                 },
                 {

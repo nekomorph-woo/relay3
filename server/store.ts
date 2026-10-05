@@ -154,7 +154,12 @@ export class Store {
       if (t.status === 'uploading')
         this.saveTransfer({ ...t, status: 'failed', error: '中转站重启，上传中断，请重新发送' });
       if (t.status === 'downloading')
-        this.saveTransfer({ ...t, status: 'ready', downloaded: 0, error: '下载中断，可重新接收' });
+        this.saveTransfer({
+          ...t,
+          status: t.fileId && t.lastDownloadedAt ? 'completed' : 'ready',
+          downloaded: 0,
+          error: '下载中断，可重新接收',
+        });
     }
   }
   saveSettings(s: Settings) {

@@ -29,6 +29,7 @@ export function StationSwitcher({
       <span className="station-switch-label">当前中转站</span>
       <button
         ref={anchor}
+        data-station-id={activeId}
         className="station-switch-trigger"
         aria-label="切换中转站"
         aria-expanded={open}
@@ -60,6 +61,7 @@ export function StationSwitcher({
           {connections.map((c) => (
             <button
               role="option"
+              data-station-id={c.session.stationId}
               aria-selected={c.session.stationId === activeId}
               key={c.session.stationId}
               onClick={() => {

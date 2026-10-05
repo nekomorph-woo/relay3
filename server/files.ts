@@ -140,6 +140,7 @@ export class FileDelivery {
           cleanup ??= this.service.tasks.start('cleanup', '清理过期缓存', files.length);
           try {
             await this.remove(f.id);
+            this.service.tasks.released(cleanup, f.uploaded);
             this.service.tasks.progress(cleanup, ++checked);
           } catch (error) {
             diagnostic('error', 'cache.cleanup-failed', { error });
@@ -207,6 +208,11 @@ export class FileDelivery {
         !['hint', 'note', 'clue'].includes(b.remarkStyle)
       )
         fail('公开备注无效');
+      if (
+        b.expectedSha256 !== undefined &&
+        (typeof b.expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(b.expectedSha256))
+      )
+        fail('文件校验摘要无效');
       const existing = this.all().find((f) => f.id === b.id);
       if (existing) {
         if (existing.senderId !== d.id) fail('文件标识已占用', 409);
@@ -357,7 +363,7 @@ export class FileDelivery {
       fail('中转站磁盘空间不足', 507);
     const controller = new AbortController();
     this.service.streams.set(f.id, controller);
-    const task = this.service.tasks.start('upload', f.name, f.size, d.name);
+    const task = this.service.tasks.start('upload', f.name, f.size, d.name, f.id);
     const start = Date.now();
     let bytes = 0,
       last = 0;
@@ -439,11 +445,18 @@ export class FileDelivery {
     t = this.service.getTransfer(t.id);
     const now = Date.now();
     if (action === 'cancel' && (d.id === t.senderId || d.id === t.recipientId)) {
+      if (
+        !['pending', 'accepted', 'uploading', 'ready', 'downloading', 'awaiting-confirm'].includes(
+          t.status,
+        )
+      )
+        fail('传输已结束', 409);
       this.service.streams.get(t.id)?.abort();
       return this.service.update(t, { status: 'cancelled', error: '该接收任务已取消' });
     }
     if (d.id !== t.recipientId) fail('只有接收设备可以操作', 403);
-    if (action === 'complete' && (t.status === 'awaiting-confirm' || t.status === 'completed'))
+    if (action === 'complete' && t.status === 'completed') return t;
+    if (action === 'complete' && t.status === 'awaiting-confirm')
       return this.service.update(t, {
         status: 'completed',
         completedAt: now,
@@ -484,7 +497,7 @@ export class FileDelivery {
     const controller = new AbortController();
     this.service.streams.set(t.id, controller);
     this.service.update(t, { status: 'downloading', downloaded: 0, error: null });
-    const task = this.service.tasks.start('download', f.name, f.size, d.name);
+    const task = this.service.tasks.start('download', f.name, f.size, d.name, f.id);
     const start = Date.now();
     const stream = createReadStream(this.filename(f));
     let bytes = 0,

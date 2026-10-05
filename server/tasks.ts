@@ -4,6 +4,8 @@ export interface BackgroundTask {
   kind: 'upload' | 'download' | 'scan' | 'cleanup';
   name: string;
   deviceName?: string;
+  fileId?: string;
+  releasedBytes?: number;
   bytes: number;
   total: number;
   startedAt: number;
@@ -13,13 +15,20 @@ export interface BackgroundTask {
 }
 export class TaskRegistry {
   private tasks = new Map<string, BackgroundTask>();
-  start(kind: BackgroundTask['kind'], name: string, total = 0, deviceName?: string) {
+  start(
+    kind: BackgroundTask['kind'],
+    name: string,
+    total = 0,
+    deviceName?: string,
+    fileId?: string,
+  ) {
     const id = randomUUID();
     this.tasks.set(id, {
       id,
       kind,
       name,
       deviceName,
+      fileId,
       total,
       bytes: 0,
       startedAt: Date.now(),
@@ -31,6 +40,10 @@ export class TaskRegistry {
   progress(id: string, bytes: number) {
     const task = this.tasks.get(id);
     if (task) task.bytes = bytes;
+  }
+  released(id: string, bytes: number) {
+    const t = this.tasks.get(id);
+    if (t) t.releasedBytes = (t.releasedBytes ?? 0) + bytes;
   }
   finish(id: string, error?: string) {
     const task = this.tasks.get(id);

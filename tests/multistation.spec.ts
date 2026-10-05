@@ -61,9 +61,10 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
     await expect(page.getByRole('button', { name: '添加中转站连接' })).toBeVisible();
   }
   async function select(index: number) {
+    await page.getByRole('button', { name: '切换中转站' }).click();
     await page
-      .getByRole('combobox', { name: '切换中转站' })
-      .selectOption(services[index].store.settings.stationId);
+      .locator(`[role="option"][data-station-id="${services[index].store.settings.stationId}"]`)
+      .click();
     await expect(page.locator('main')).toHaveAttribute('data-connected', 'true');
   }
   async function incoming(index: number, filename: string, content: Buffer, sharedId: string) {
@@ -134,9 +135,11 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
     }
     const boot = await page.evaluate(() => window.relay3!.bootstrap());
     await expect.poll(() => services.every((s) => s.clients.has(boot.deviceId))).toBe(true);
-    await expect(page.getByRole('combobox', { name: '切换中转站' }).locator('option')).toHaveCount(
+    await page.getByRole('button', { name: '切换中转站' }).click();
+    await expect(page.getByRole('listbox', { name: '中转站列表' }).getByRole('option')).toHaveCount(
       2,
     );
+    await page.getByRole('button', { name: '切换中转站' }).click();
 
     // 未查看的甲站收到消息，不应被乙站的阅读确认消费。
     await page.getByRole('button', { name: '群聊大厅', exact: true }).click();
@@ -203,8 +206,11 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
     await page.getByRole('button', { name: '文件传输', exact: true }).click();
     for (const index of [0, 1]) {
       await select(index);
-      await page.getByRole('button', { name: '接收设备', exact: true }).click();
-      await page.getByRole('option').filter({ hasText: '同名电脑' }).click();
+      await page
+        .locator('.delivery-recipients label')
+        .filter({ hasText: '同名电脑' })
+        .locator('input')
+        .check();
       await page.getByLabel('选择待发送文件').setInputFiles({
         name: `发送到${index}.txt`,
         mimeType: 'text/plain',
@@ -213,6 +219,13 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
       await page.getByRole('button', { name: '发送', exact: true }).click();
     }
     for (const index of [0, 1]) {
+      await expect
+        .poll(() =>
+          services[index].store
+            .transfers()
+            .some((t: any) => t.name === `发送到${index}.txt` && t.status === 'pending'),
+        )
+        .toBe(true);
       const transfer = services[index].store
         .transfers()
         .find((t: any) => t.name === `发送到${index}.txt`);
@@ -379,7 +392,8 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
     application = undefined;
     await launch();
     await expect.poll(() => services.every((s) => s.clients.has(boot.deviceId))).toBe(true);
-    await expect(page.getByRole('combobox', { name: '切换中转站' })).toHaveValue(
+    await expect(page.getByRole('button', { name: '切换中转站' })).toHaveAttribute(
+      'data-station-id',
       services[1].store.settings.stationId,
     );
     await expect(page.locator('.chat-hall:not([hidden])')).toBeVisible();

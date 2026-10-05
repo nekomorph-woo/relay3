@@ -4,13 +4,31 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Transform } from 'node:stream';
 import { localFetch as fetch } from './http.mjs';
 import { RelayService } from '../dist-electron/index.js';
 import { generateIdentity, encryptMessage, decryptMessage } from '../dist-electron/chatCrypto.js';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-async function fixture() {
+async function fixture(slowDownload = false) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'relay3-files-'));
   const s = new RelayService(dir, path.resolve('dist'));
+  if (slowDownload) {
+    const base = s.base.bind(s);
+    s.base = async () => {
+      const app = await base();
+      app.addHook('onSend', async (request, _reply, payload) => {
+        if (!request.url.includes('/download') || !payload?.pipe) return payload;
+        return payload.pipe(
+          new Transform({
+            transform(chunk, _encoding, callback) {
+              setTimeout(() => callback(null, chunk), 80);
+            },
+          }),
+        );
+      });
+      return app;
+    };
+  }
   s.store.settings.port = 0;
   await s.startControl();
   await s.startHub();
@@ -54,11 +72,11 @@ async function fixture() {
       ...extra,
     });
   }
-  async function upload(a, id) {
+  async function upload(a, id, content = 'abc') {
     const res = await fetch(base + `/api/files/${id}/upload`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${a.token}`, 'Content-Type': 'application/octet-stream' },
-      body: Buffer.from('abc'),
+      body: Buffer.from(content),
     });
     return { status: res.status, data: await res.json() };
   }
@@ -124,6 +142,46 @@ test('离线多目标共享上传、独立接收拒绝、D/T固定和重新下�
     assert.equal(f.s.getTransfer(tb.id).status, 'completed');
     assert.equal((await f.download(b, tb)).status, 409);
     assert.equal(f.s.store.records().length, 2);
+  } finally {
+    await f.close();
+  }
+});
+
+test('下载跨越D/T继续完成，缓存延后清理且禁止其他首次接收', async () => {
+  const f = await fixture(true);
+  try {
+    const a = await f.join('发送者'),
+      b = await f.join('正在接收'),
+      c = await f.join('尚未处理');
+    const content = Buffer.alloc(512 * 1024, 65);
+    const { data: file } = await f.create(a, [b, c], { size: content.length });
+    await f.upload(a, file.id, content);
+    const receiving = file.transfers.find((t) => t.recipientId === b.self.id);
+    const pending = file.transfers.find((t) => t.recipientId === c.self.id);
+    await f.call(`/api/transfers/${receiving.id}/accept`, b.token, {});
+    const downloading = f.download(b, receiving);
+    for (let i = 0; i < 100 && !f.s.streams.has(receiving.id); i++) await wait(5);
+    assert.equal(f.s.streams.has(receiving.id), true);
+    f.s.files.save({
+      ...f.s.files.get(file.id),
+      receiveDeadline: Date.now() - 10,
+      expiresAt: Date.now() - 5,
+    });
+    await f.s.files.maintenance();
+    assert.equal(f.s.files.get(file.id).state, 'ready');
+    assert.equal(f.s.getTransfer(receiving.id).status, 'downloading');
+    assert.equal(f.s.getTransfer(pending.id).status, 'expired');
+    assert.equal((await f.call(`/api/transfers/${pending.id}/accept`, c.token, {})).status, 409);
+    const response = await downloading;
+    assert.equal((await response.arrayBuffer()).byteLength, content.length);
+    await wait(20);
+    await f.s.files.maintenance();
+    assert.equal(f.s.files.get(file.id).state, 'cleaned');
+    assert.equal(
+      (await f.call(`/api/transfers/${receiving.id}/complete`, b.token, {})).status,
+      200,
+    );
+    assert.equal(f.s.getTransfer(receiving.id).status, 'completed');
   } finally {
     await f.close();
   }
@@ -204,6 +262,43 @@ test('群聊文件名仅授权身份解密，数据库/传输/缓存不保存明
     const response = await f.download(b, t);
     assert.equal(response.headers.get('Content-Disposition').includes('保密'), false);
     await response.text();
+  } finally {
+    await f.close();
+  }
+});
+
+test('上传失败重试保留任务、校验原内容，清理和保留设置不会延长T', async () => {
+  const f = await fixture();
+  try {
+    const a = await f.join('发送'),
+      b = await f.join('接收');
+    const hash = (await import('node:crypto')).createHash('sha256').update('abc').digest('hex');
+    const { data: file } = await f.create(a, [b], { expectedSha256: hash });
+    const initialIds = file.transfers.map((t) => t.id);
+    assert.equal((await f.upload(a, file.id, 'xyz')).status, 409);
+    assert.equal(f.s.files.get(file.id).state, 'failed');
+    assert.equal(f.s.files.get(file.id).receiveDeadline, null);
+    assert.equal((await f.upload(a, file.id)).status, 200);
+    assert.deepEqual(
+      f.s.files.transfers(file.id).map((t) => t.id),
+      initialIds,
+    );
+    const original = f.s.files.get(file.id);
+    f.s.store.saveSettings({ ...f.s.store.settings, retentionHours: 10 });
+    assert.equal(f.s.files.get(file.id).expiresAt, original.expiresAt);
+    const t = file.transfers[0];
+    await f.call(`/api/transfers/${t.id}/accept`, b.token, {});
+    await (await f.download(b, t)).text();
+    await wait(20);
+    await f.call(`/api/transfers/${t.id}/complete`, b.token, {});
+    const downloaded = f.s.getTransfer(t.id).lastDownloadedAt;
+    await wait(10);
+    await f.call(`/api/transfers/${t.id}/complete`, b.token, {});
+    assert.equal(f.s.getTransfer(t.id).lastDownloadedAt, downloaded);
+    assert.equal((await f.call(`/api/transfers/${t.id}/cancel`, a.token, {})).status, 409);
+    await f.s.files.remove(file.id);
+    assert.equal(f.s.getTransfer(t.id).status, 'completed');
+    assert.equal(f.s.files.get(file.id).state, 'cleaned');
   } finally {
     await f.close();
   }
