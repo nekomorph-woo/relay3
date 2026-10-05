@@ -175,6 +175,17 @@ test('群聊文件名加密、手机大厅接收、Emoji本地加载和输入留
     mimeType: 'text/plain',
     buffer: Buffer.from('聊天文件'),
   });
+  await modal
+    .getByLabel('选择群聊文件')
+    .evaluate((input) => input.dispatchEvent(new Event('cancel', { bubbles: true })));
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.chat-file-selection')).toContainText('加密文件名.txt');
+  await modal.press('Escape');
+  await expect(modal).toBeVisible();
+  const searchBox = (await modal.getByLabel('搜索接收设备').boundingBox())!;
+  const filterBox = (await modal.getByLabel('接收设备在线筛选').boundingBox())!;
+  expect(searchBox.height).toBe(filterBox.height);
+  expect(Math.abs(searchBox.y - filterBox.y)).toBeLessThan(1);
   const recipient = (await admin('/status')).devices.find((d: any) => d.name === '在线手机');
   await modal.locator(`[data-device-id="${recipient.id}"] input`).check();
   await modal.locator('summary').click();
@@ -259,15 +270,13 @@ test('文件发送弹窗在窄屏保留固定提交区，多文件列表独立�
     await phone.setViewportSize({ width, height: 700 });
     await phone.getByRole('button', { name: '发送文件', exact: true }).click();
     const modal = phone.getByRole('dialog', { name: '发送文件', exact: true });
-    await modal
-      .getByLabel('选择群聊文件')
-      .setInputFiles(
-        Array.from({ length: 12 }, (_, i) => ({
-          name: `较长的测试文件名称-${i}.txt`,
-          mimeType: 'text/plain',
-          buffer: Buffer.from('内容'),
-        })),
-      );
+    await modal.getByLabel('选择群聊文件').setInputFiles(
+      Array.from({ length: 12 }, (_, i) => ({
+        name: `较长的测试文件名称-${i}.txt`,
+        mimeType: 'text/plain',
+        buffer: Buffer.from('内容'),
+      })),
+    );
     const box = (await modal.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -287,4 +296,34 @@ test('文件发送弹窗在窄屏保留固定提交区，多文件列表独立�
     if (width === 375) await phone.screenshot({ path: 'test-results/delivery-phone-composer.png' });
     await modal.getByRole('button', { name: '关闭文件发送' }).click();
   }
+});
+
+test('后台入口固定底部，运行数量和空闲图标随状态更新', async () => {
+  await desktop.route('**/admin/tasks', async (route) =>
+    route.fulfill({
+      json: {
+        tasks: Array.from({ length: 10 }, (_, i) => ({
+          id: String(i),
+          kind: 'upload',
+          name: '测试任务',
+          bytes: 0,
+          total: 100,
+          startedAt: Date.now(),
+          state: 'running',
+        })),
+      },
+    }),
+  );
+  const entry = desktop.getByRole('button', { name: '本机中转站后台任务' });
+  await expect(entry).toHaveText('后台任务(10)');
+  await expect(entry.locator('.task-spinning')).toHaveCount(1);
+  const taskBox = (await entry.boundingBox())!;
+  const footerBox = (await desktop.locator('.sidebar-bottom').boundingBox())!;
+  expect(footerBox.y - taskBox.y - taskBox.height).toBeLessThan(20);
+  await desktop.unroute('**/admin/tasks');
+  await desktop.route('**/admin/tasks', async (route) => route.fulfill({ json: { tasks: [] } }));
+  await expect(entry).toHaveText('后台任务');
+  await expect(entry.locator('.lucide-list-todo')).toHaveCount(1);
+  await expect(entry.locator('.task-spinning')).toHaveCount(0);
+  await desktop.unroute('**/admin/tasks');
 });

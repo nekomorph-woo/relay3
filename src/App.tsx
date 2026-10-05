@@ -1112,7 +1112,9 @@ export default function App() {
                                 />
                               ) : (
                                 <>
-                                  <Badge status={t.status} />
+                                  <div className="transfer-state">
+                                    <Badge status={t.status} />
+                                  </div>
                                   {incoming && t.status === 'pending' && (
                                     <>
                                       <Button
@@ -1450,7 +1452,10 @@ export default function App() {
                             {d.name}
                             <DeviceTag platform={d.platform} />
                           </strong>
-                          <p>{d.ip}</p>
+                          <div className="device-connection-detail">
+                            <Badge status={d.online ? 'online' : 'offline'} />
+                            <span>{d.ip}</span>
+                          </div>
                           <small
                             title={`首次连接 ${date(d.firstSeen)}${d.disconnectedAt ? ` · 断开 ${date(d.disconnectedAt)}` : ''} `}
                           >
@@ -1458,7 +1463,6 @@ export default function App() {
                           </small>
                         </div>
                         <div className="device-record-actions">
-                          <Badge status={d.online ? 'online' : 'offline'} />
                           <Button
                             kind="danger"
                             title="清除设备"
@@ -1815,21 +1819,24 @@ export default function App() {
                               />
                               <File size={20} />
                               <div>
-                                <strong>
-                                  <TransferName
-                                    t={{
-                                      name: e.name,
-                                      fileId: e.id,
-                                      chatMessageId: e.chatMessageId,
-                                      stationId: admin.settings.stationId,
-                                    }}
-                                    session={
-                                      Object.values(multi.connections).find(
-                                        (c) => c.session.stationId === admin.settings.stationId,
-                                      )?.session
-                                    }
-                                  />
-                                </strong>
+                                <div className="file-summary-heading">
+                                  <strong>
+                                    <TransferName
+                                      t={{
+                                        name: e.name,
+                                        fileId: e.id,
+                                        chatMessageId: e.chatMessageId,
+                                        stationId: admin.settings.stationId,
+                                      }}
+                                      session={
+                                        Object.values(multi.connections).find(
+                                          (c) => c.session.stationId === admin.settings.stationId,
+                                        )?.session
+                                      }
+                                    />
+                                  </strong>
+                                  <Badge status={e.status} />
+                                </div>
                                 <small>
                                   {sizes(e.bytes)} ·{' '}
                                   {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
@@ -1840,7 +1847,6 @@ export default function App() {
                                 </small>
                               </div>
                               <div className="file-task-actions">
-                                <Badge status={e.status} />
                                 <Button
                                   title="打开中转缓存所在目录"
                                   onClick={() =>
@@ -1944,7 +1950,12 @@ export default function App() {
                               />
                               <File size={20} />
                               <div>
-                                <strong>{f.name}</strong>
+                                <div className="file-summary-heading">
+                                  <strong>{f.name}</strong>
+                                  <span className="badge">
+                                    {f.exists ? '已保存' : '已移走或删除'}
+                                  </span>
+                                </div>
                                 <small>
                                   {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
                                   <Tooltip
@@ -1961,9 +1972,6 @@ export default function App() {
                                 </small>
                               </div>
                               <div className="file-task-actions">
-                                <span className="badge">
-                                  {f.exists ? '已保存' : '已移走或删除'}
-                                </span>
                                 {f.exists && (
                                   <Button
                                     title="打开接收文件所在目录"

@@ -52,12 +52,13 @@ export class TaskRegistry {
     this.trim();
   }
   private trim() {
-    const done = [...this.tasks.values()]
-      .filter((t) => t.state !== 'running')
-      .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
-    for (const t of done.slice(20)) this.tasks.delete(t.id);
+    const cutoff = Date.now() - 5 * 60_000;
+    for (const [id, task] of this.tasks)
+      if (task.state !== 'running' && task.finishedAt !== undefined && task.finishedAt <= cutoff)
+        this.tasks.delete(id);
   }
   list() {
+    this.trim();
     return [...this.tasks.values()].sort(
       (a, b) =>
         Number(b.state === 'running') - Number(a.state === 'running') || b.startedAt - a.startedAt,

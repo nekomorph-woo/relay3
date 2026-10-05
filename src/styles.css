@@ -206,7 +206,7 @@ form {
   width: 218px;
   position: fixed;
   inset: 0 auto 0 0;
-  padding: var(--space-2xl) var(--space-lg) var(--space-xl);
+  padding: var(--space-lg) var(--space-lg) var(--space-xl);
   background: var(--color-sidebar);
   color: var(--color-ink);
   border-right: 1px solid var(--color-rule);
@@ -3644,12 +3644,12 @@ main.native-page {
 }
 .sidebar:has(.station-switcher) .nav-item {
   height: 38px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .nav-group-label {
   display: block;
   padding: 10px 12px 4px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--color-muted);
 }
 .connected-stations {
@@ -4065,6 +4065,7 @@ main.native-page {
   margin: var(--space-sm) 0;
 }
 .background-task-control {
+  margin-top: auto;
   padding: var(--space-sm) 0;
 }
 .background-task-control > button {
@@ -4307,6 +4308,7 @@ textarea {
   gap: 6px;
 }
 .recipient-search input {
+  margin-top: 0;
   min-width: 0;
   width: 100%;
   padding: 6px 10px;
@@ -4397,4 +4399,37 @@ textarea {
   .transfer-screen .composer {
     overflow: visible;
   }
+}
+
+/* 状态随对象信息展示，操作保留独立区域。 */
+.connection-metadata,
+.device-connection-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.connection-metadata small {
+  margin-top: 0;
+}
+.device-connection-detail {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.transfer-state {
+  flex-basis: 100%;
+}
+.sidebar:has(.background-task-control) > .sidebar-bottom {
+  margin-top: 0;
+}
+
+.file-summary-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.file-summary-heading strong {
+  min-width: 0;
 }

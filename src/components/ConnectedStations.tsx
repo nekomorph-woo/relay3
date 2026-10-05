@@ -63,16 +63,18 @@ export function ConnectedStations({
                 {session.stationName || '其他'}
                 {activeId === session.stationId && <span className="badge">当前查看</span>}
               </strong>
-              <small>{session.base}</small>
+              <div className="connection-metadata">
+                <span className={`badge ${connection?.status === 'connected' ? 'positive' : ''}`}>
+                  {connection ? connectionLabels[connection.status] : '已断开'}
+                </span>
+                <small>{session.base}</small>
+              </div>
               {connection && (
                 <small>
                   {transfers} 项传输 · {connection.hub?.chatUnread ?? 0} 条未读
                 </small>
               )}
             </div>
-            <span className={`badge ${connection?.status === 'connected' ? 'positive' : ''}`}>
-              {connection ? connectionLabels[connection.status] : '已断开'}
-            </span>
             <div className="actions">
               {connection ? (
                 <>

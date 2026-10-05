@@ -3,10 +3,12 @@ export function ChatDialog({
   label,
   onClose,
   children,
+  dismissible = true,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -24,8 +26,9 @@ export function ChatDialog({
       className="chat-native-dialog"
       aria-label={label}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
     >
       {children}

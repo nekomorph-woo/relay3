@@ -163,9 +163,12 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await tab('接收文件');
   await expect(page.locator('.cache-row:not(.received-row)')).toHaveCount(0);
   const row = page.locator('.received-row').first();
-  const content = await row.locator('div').first().boundingBox();
+  const content = await row.locator('.file-summary-heading strong').boundingBox();
   const badge = await row.locator('.badge').boundingBox();
-  expect(badge!.x).toBeGreaterThan(content!.x + content!.width);
+  expect(badge!.x >= content!.x + content!.width || badge!.y >= content!.y + content!.height).toBe(
+    true,
+  );
+  await expect(row.locator('.file-task-actions .badge')).toHaveCount(0);
   const directory = page.getByRole('button', { name: '接收文件位置', exact: true });
   await expect(page.locator('.received-panel .section-head')).toContainText('接收文件位置');
   await expect(directory).toBeVisible();

@@ -1,7 +1,16 @@
 import { TransferName } from './FileTask';
 import type { Session } from '../api';
 import { useEffect, useRef, useState } from 'react';
-import { LoaderCircle, Upload, Download, ScanLine, Trash2, X, AlertCircle } from 'lucide-react';
+import {
+  LoaderCircle,
+  ListTodo,
+  Upload,
+  Download,
+  ScanLine,
+  Trash2,
+  X,
+  AlertCircle,
+} from 'lucide-react';
 import { sizes } from '../api';
 import type { BackgroundTask } from '../../server/tasks';
 export function BackgroundTasks({
@@ -49,8 +58,8 @@ export function BackgroundTasks({
         aria-label="本机中转站后台任务"
         onClick={() => setOpen(!open)}
       >
-        <LoaderCircle size={17} className={count ? 'task-spinning' : ''} />
-        <span>后台任务{count ? ` · ${count}` : ''}</span>
+        {count ? <LoaderCircle size={17} className="task-spinning" /> : <ListTodo size={17} />}
+        <span>后台任务{count ? `(${count})` : ''}</span>
         {failed && <AlertCircle size={13} aria-label="有任务失败" />}
       </button>
       {open && (
@@ -92,7 +101,7 @@ export function BackgroundTasks({
                         )}
                       </strong>
                       <small>
-                        {t.deviceName} ·{' '}
+                        {t.deviceName ? `${t.deviceName} · ` : ''}
                         {t.state === 'running'
                           ? '执行中'
                           : t.state === 'completed'

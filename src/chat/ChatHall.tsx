@@ -828,6 +828,7 @@ export function ChatHall({
       {fileComposer && visible && (
         <ChatDialog
           label="发送文件"
+          dismissible={false}
           onClose={() => {
             if (!busy) setFileComposer(false);
           }}

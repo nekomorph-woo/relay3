@@ -303,3 +303,32 @@ test('上传失败重试保留任务、校验原内容，清理和保留设置�
     await f.close();
   }
 });
+
+test('后台任务结束满5分钟退出列表，运行任务保留并独立计数', async (t) => {
+  const f = await fixture();
+  try {
+    const tasks = new f.s.tasks.constructor();
+    let now = Date.now();
+    t.mock.method(Date, 'now', () => now);
+    const upload = tasks.start('upload', '运行中', 100);
+    const complete = tasks.start('scan', '已结束');
+    const failed = tasks.start('download', '失败');
+    tasks.finish(complete);
+    tasks.finish(failed, '下载中断');
+    for (let i = 0; i < 25; i++) tasks.finish(tasks.start('scan', '检查'));
+    now += 299999;
+    assert.equal(tasks.list().length, 28);
+    now++;
+    assert.deepEqual(
+      tasks.list().map((task) => task.id),
+      [upload],
+    );
+    now += 3600000;
+    assert.equal(tasks.list()[0].state, 'running');
+    tasks.finish(upload);
+    assert.equal(tasks.list()[0].finishedAt, now);
+  } finally {
+    t.mock.restoreAll();
+    await f.close();
+  }
+});
