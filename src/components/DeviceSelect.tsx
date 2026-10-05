@@ -30,7 +30,7 @@ export function DeviceSelect({
       const rect = trigger.current!.getBoundingClientRect();
       const below = innerHeight - rect.bottom - 12;
       const above = rect.top - 12;
-      const upwards = below < 160 && above > below;
+      const upwards = below < Math.min(list.scrollHeight, 240) && above > below;
       const height = Math.min(240, upwards ? above : below);
       Object.assign(list.style, {
         position: 'fixed',
@@ -88,6 +88,7 @@ export function DeviceSelect({
         type="button"
         className="device-select-trigger"
         aria-label={label}
+        data-placeholder={!selected && placeholder.startsWith('选择')}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={id}

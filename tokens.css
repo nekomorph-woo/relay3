@@ -5,6 +5,7 @@
   --color-sidebar: oklch(95.5% 0.007 245);
   --color-ink: oklch(25% 0.022 245);
   --color-muted: oklch(47% 0.02 245);
+  --color-hint: oklch(57% 0.015 245);
   --color-rule: oklch(86% 0.012 245);
   --color-accent: oklch(47% 0.045 245);
   --color-accent-ink: oklch(99% 0.003 245);

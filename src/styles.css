@@ -106,8 +106,71 @@ select {
   width: 100%;
   min-width: 0;
 }
-input::placeholder {
-  color: var(--color-muted);
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-hint);
+  font-weight: 400;
+  opacity: 1;
+}
+select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236d7a85' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+/* 桌面使用浏览器原生可定制选择器，选项列表锚定在控件外侧。
+ * 手机保留系统选择器，旧浏览器保留原生选项选择行为。 */
+@supports (appearance: base-select) {
+  @media (pointer: fine) {
+    select,
+    ::picker(select) {
+      appearance: base-select;
+    }
+    select {
+      padding-right: 12px;
+      background-image: none;
+      align-items: center;
+    }
+    select::picker-icon {
+      content: '';
+      flex: 0 0 16px;
+      width: 16px;
+      height: 16px;
+      margin-left: 12px;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236d7a85' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+        center / 16px no-repeat;
+    }
+    ::picker(select) {
+      inset: auto;
+      top: anchor(bottom);
+      left: anchor(left);
+      position-try-fallbacks: flip-block;
+      margin: 6px 0;
+      min-width: anchor-size(width);
+      max-width: calc(100vw - 24px);
+      max-height: min(280px, calc(100dvh - 32px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border: 1px solid var(--color-rule);
+      border-radius: var(--radius-sm);
+      padding: 4px;
+      color: var(--color-ink);
+      background: var(--color-surface);
+      box-shadow: 0 6px 18px var(--color-overlay);
+      font-weight: 400;
+    }
+    select option {
+      min-height: 36px;
+      padding: 8px 10px;
+      gap: 8px;
+      border-radius: 3px;
+    }
+    select option:hover,
+    select option:checked {
+      background: var(--color-paper-2);
+    }
+  }
 }
 input[type='checkbox'] {
   height: 20px;
@@ -3316,6 +3379,13 @@ main.native-page {
   font: inherit;
   text-align: left;
 }
+.device-select-trigger > svg {
+  color: var(--color-muted);
+}
+.device-select-trigger[data-placeholder='true'] > span {
+  color: var(--color-hint);
+  font-weight: 400;
+}
 .device-select-trigger > span {
   min-width: 0;
   overflow: hidden;
@@ -3450,7 +3520,7 @@ main.native-page {
   padding: 16px 12px;
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--color-muted);
+  color: var(--color-hint);
 }
 .discovery-manual-action {
   border: 0;
