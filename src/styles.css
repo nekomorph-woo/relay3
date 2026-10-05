@@ -2617,13 +2617,13 @@ main.native-page {
   padding: 0;
   flex-shrink: 0;
 }
-.storage-workspace .storage-summary {
+:is(.cache-workspace, .received-workspace) .storage-summary {
   display: flex;
   margin: 0;
   gap: var(--space-lg);
   flex-shrink: 0;
 }
-.storage-workspace .storage-summary .panel {
+:is(.cache-workspace, .received-workspace) .storage-summary .panel {
   flex: 1;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -2637,11 +2637,11 @@ main.native-page {
   width: 20px;
   height: 20px;
 }
-.storage-workspace .storage-summary p {
+:is(.cache-workspace, .received-workspace) .storage-summary p {
   margin: 0;
   font-size: var(--text-sm);
 }
-.storage-workspace .storage-summary strong {
+:is(.cache-workspace, .received-workspace) .storage-summary strong {
   font-size: 20px;
   grid-column: 3;
   grid-row: 1/3;
@@ -2695,7 +2695,7 @@ main.native-page {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-lg);
 }
 .storage-files > .panel {
@@ -2735,7 +2735,7 @@ main.native-page {
   grid-column: 3;
   justify-self: start;
 }
-.storage-workspace .storage-footnote {
+:is(.cache-workspace, .received-workspace) .storage-footnote {
   padding: 0;
   font-size: 11px;
   flex-shrink: 0;
@@ -2845,7 +2845,7 @@ main.native-page {
   }
   .storage-files {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 @media (max-width: 600px) {
@@ -2887,17 +2887,17 @@ main.native-page {
   .native-page .search {
     width: 100%;
   }
-  .storage-workspace .storage-summary {
+  :is(.cache-workspace, .received-workspace) .storage-summary {
     gap: var(--space-sm);
   }
-  .storage-workspace .storage-summary .panel {
+  :is(.cache-workspace, .received-workspace) .storage-summary .panel {
     grid-template-columns: minmax(0, 1fr);
     padding: var(--space-sm);
   }
-  .storage-workspace .storage-summary svg {
+  :is(.cache-workspace, .received-workspace) .storage-summary svg {
     display: none;
   }
-  .storage-workspace .storage-summary strong {
+  :is(.cache-workspace, .received-workspace) .storage-summary strong {
     grid-column: 1;
     grid-row: auto;
     font-size: 18px;

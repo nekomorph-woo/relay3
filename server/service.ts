@@ -406,7 +406,9 @@ export class RelayService {
           'connections',
           'station',
           'devices',
-          'storage',
+          'storage', // 兼容旧客户端保存的页面状态。
+          'cache',
+          'received',
           'settings',
         ].includes(b.page)
       )

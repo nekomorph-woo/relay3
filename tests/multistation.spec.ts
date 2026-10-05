@@ -254,7 +254,7 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
       .selectOption(services[1].store.settings.stationId);
     await expect(page.locator('.record-row')).toHaveCount(2);
     await page.screenshot({ path: 'design/qa/multistation-history.png' });
-    await page.getByRole('button', { name: '本机存储', exact: true }).click();
+    await page.getByRole('button', { name: '接收文件', exact: true }).click();
     await page
       .getByRole('combobox', { name: '按中转站筛选已接收文件' })
       .selectOption(services[0].store.settings.stationId);

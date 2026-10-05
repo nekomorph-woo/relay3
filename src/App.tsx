@@ -63,7 +63,15 @@ import {
 } from './api';
 
 type Page =
-  'chat' | 'transfer' | 'station' | 'devices' | 'history' | 'storage' | 'settings' | 'connections';
+  | 'chat'
+  | 'transfer'
+  | 'station'
+  | 'devices'
+  | 'history'
+  | 'cache'
+  | 'received'
+  | 'settings'
+  | 'connections';
 const pageInfo: Record<Page, [string, string]> = {
   chat: ['群聊大厅', '连接设备的文字交流与历史。'],
   transfer: ['文件传输', '选择设备，把文件送过去。'],
@@ -71,8 +79,9 @@ const pageInfo: Record<Page, [string, string]> = {
   station: ['本机中转站', '让这台电脑成为局域网里的接力点。'],
   devices: ['连接设备', '查看当前连接与历史连接记录。'],
   history: ['收发记录', '每一次发送和接收，都留有记录。'],
-  storage: ['本机存储', '查看占用空间，管理中转站暂存文件。'],
-  settings: ['应用设置', '设备名称、保存位置与清理规则。'],
+  cache: ['中转缓存', '管理本机中转站暂存的传输文件。'],
+  received: ['接收文件', '管理客户端下载到本机的正式文件。'],
+  settings: ['设备', '设备名称、保存位置与清理规则。'],
 };
 function Empty({
   icon = <File size={28} />,
@@ -350,7 +359,8 @@ export default function App() {
               )
             )
               multi.select(next.clientView.stationId);
-            if (next.clientView?.page && next.clientView.page in pageInfo)
+            if (next.clientView?.page === 'storage') setPage('cache');
+            else if (next.clientView?.page && next.clientView.page in pageInfo)
               setPage(next.clientView.page as Page);
           }
         })
@@ -441,11 +451,12 @@ export default function App() {
     [],
   );
   useEffect(() => {
-    if (page !== 'storage' || !boot) return;
+    if (!['cache', 'received'].includes(page) || !boot) return;
     const poll = () =>
       Promise.all([
-        management<CacheState>('/cache').then(setCache),
-        management('/received').then((r) => setReceived(r.entries)),
+        page === 'cache'
+          ? management<CacheState>('/cache').then(setCache)
+          : management('/received').then((r) => setReceived(r.entries)),
       ]).catch((e) => inform(e.message, true));
     void poll();
     const timer = setInterval(poll, 2000);
@@ -743,10 +754,11 @@ export default function App() {
     { id: 'chat' as Page, label: '群聊大厅', icon: MessageSquare },
     { id: 'history' as Page, label: '收发记录', icon: History },
     { id: 'connections' as Page, label: '连接的中转站', icon: Link },
+    { id: 'received' as Page, label: '接收文件', icon: Download },
     { id: 'station' as Page, label: '本机中转站', icon: Radio },
     { id: 'devices' as Page, label: '连接设备', icon: Monitor },
-    { id: 'storage' as Page, label: '本机存储', icon: HardDrive },
-    { id: 'settings' as Page, label: '设置', icon: Settings },
+    { id: 'cache' as Page, label: '中转缓存', icon: HardDrive },
+    { id: 'settings' as Page, label: desktop ? '设备' : '设置', icon: Settings },
   ].filter((n) => desktop || ['transfer', 'chat', 'history', 'settings'].includes(n.id));
   const historyRows = records;
   return (
@@ -793,12 +805,12 @@ export default function App() {
           {nav.map(({ id, label, icon: Icon }) => (
             <div key={id} className="nav-entry">
               {desktop && id === 'transfer' && (
-                <span className="nav-group-label">中转站客户端</span>
+                <span className="nav-group-label">客户端工作区</span>
               )}
               {desktop && id === 'station' && (
-                <span className="nav-group-label">本机中转站管理</span>
+                <span className="nav-group-label">中转站服务端管理</span>
               )}
-              {desktop && id === 'storage' && <span className="nav-group-label">本机</span>}
+              {desktop && id === 'settings' && <span className="nav-group-label">本机管理</span>}
               <button
                 key={id}
                 aria-label={label}
@@ -1586,203 +1598,234 @@ export default function App() {
               </div>
             </>
           )}
-          {page === 'storage' && admin && (
+          {(page === 'cache' || page === 'received') && admin && (
             <>
               <div className="storage-summary">
-                <section className="panel">
-                  <HardDrive size={23} />
-                  <p>中转文件占用</p>
-                  <strong>{sizes(cache?.totalBytes ?? 0)}</strong>
-                  <small>磁盘可用 {sizes(cache?.freeBytes ?? 0)}</small>
-                </section>
-                <section className="panel">
-                  <History size={23} />
-                  <p>数据库占用</p>
-                  <strong>{sizes(admin.sizes.database + admin.sizes.wal + admin.sizes.shm)}</strong>
-                  <small>消息、记录与设置</small>
-                </section>
+                {page === 'cache' ? (
+                  <>
+                    <section className="panel">
+                      <HardDrive size={23} />
+                      <p>中转文件占用</p>
+                      <strong>{sizes(cache?.totalBytes ?? 0)}</strong>
+                      <small>磁盘可用 {sizes(cache?.freeBytes ?? 0)}</small>
+                    </section>
+                    <section className="panel">
+                      <History size={23} />
+                      <p>数据库占用</p>
+                      <strong>
+                        {sizes(admin.sizes.database + admin.sizes.wal + admin.sizes.shm)}
+                      </strong>
+                      <small>消息、记录与设置</small>
+                    </section>
+                  </>
+                ) : (
+                  <section className="panel">
+                    <Download size={23} />
+                    <p>已接收文件</p>
+                    <strong>
+                      {sizes(
+                        received
+                          .filter((file) => file.exists)
+                          .reduce((sum, file) => sum + file.size, 0),
+                      )}
+                    </strong>
+                    <small>
+                      {received.filter((file) => file.exists).length} 个文件 · 不会自动清理
+                    </small>
+                  </section>
+                )}
               </div>
               <Button onClick={() => setModal('storageLocations')}>
                 <FolderOpen size={16} />
-                存储位置与数据库整理
+                {page === 'cache' ? '缓存位置与数据库整理' : '接收文件位置'}
               </Button>
               <div className="storage-files">
-                <section className="panel">
-                  <div className="section-head">
-                    <div>
-                      <h2>当前存储的文件</h2>
-                      <p className="subtle">完成后 {admin.settings.retentionHours} 小时清理缓存</p>
-                    </div>
-                    <Button
-                      kind="danger"
-                      disabled={!selected.length || busy}
-                      onClick={() => setModal('clearCache')}
-                    >
-                      <Trash2 size={16} />
-                      清理所选{selected.length ? ` (${selected.length})` : ''}
-                    </Button>
-                  </div>
-                  {cache?.entries.length ? (
-                    <>
-                      <label className="select-all">
-                        <input
-                          type="checkbox"
-                          checked={
-                            cache.entries.filter((e) => !e.busy).length > 0 &&
-                            cache.entries
-                              .filter((e) => !e.busy)
-                              .every((e) => selected.includes(e.id))
-                          }
-                          onChange={(e) =>
-                            setSelected(
-                              e.target.checked
-                                ? cache.entries.filter((x) => !x.busy).map((x) => x.id)
-                                : [],
-                            )
-                          }
-                        />
-                        选择所有可清理文件
-                      </label>
-                      <ScrollArea
-                        memoryKey={`cache:${admin.settings.cacheDir}`}
-                        className="storage-list"
-                        tabIndex={0}
-                        aria-label="中转缓存列表"
+                {page === 'cache' && (
+                  <section className="panel">
+                    <div className="section-head">
+                      <div>
+                        <h2>中转站暂存文件</h2>
+                        <p className="subtle">
+                          完成后 {admin.settings.retentionHours} 小时清理缓存
+                        </p>
+                      </div>
+                      <Button
+                        kind="danger"
+                        disabled={!selected.length || busy}
+                        onClick={() => setModal('clearCache')}
                       >
-                        {cache.entries.map((e) => (
-                          <label
-                            className="cache-row"
-                            key={e.folder + e.id}
-                            data-scroll-id={e.folder + e.id}
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={e.busy}
-                              checked={selected.includes(e.id)}
-                              onChange={(ev) =>
-                                setSelected(
-                                  ev.target.checked
-                                    ? [...selected, e.id]
-                                    : selected.filter((id) => id !== e.id),
-                                )
-                              }
-                            />
-                            <File size={20} />
-                            <div>
-                              <strong>{e.name}</strong>
-                              <small>
-                                {sizes(e.bytes)} ·{' '}
-                                {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
-                                <br />
-                                {e.expiresAt
-                                  ? `自动清理：${date(e.expiresAt)}`
-                                  : '尚未进入自动清理计时'}
-                              </small>
-                            </div>
-                            <Badge status={e.status} />
-                          </label>
-                        ))}
-                      </ScrollArea>
-                    </>
-                  ) : (
-                    <Empty icon={<HardDrive size={28} />} title="缓存目录是空的">
-                      传输经过本机中转站后，文件会显示在这里。
-                    </Empty>
-                  )}
-                </section>
-                <section className="panel received-panel">
-                  <div className="section-head">
-                    <div>
-                      <h2>本机已接收文件</h2>
-                      <p className="subtle">正式文件，不会自动清理。</p>
+                        <Trash2 size={16} />
+                        清理所选{selected.length ? ` (${selected.length})` : ''}
+                      </Button>
                     </div>
-                    <Button
-                      kind="danger"
-                      disabled={!receivedSelected.length || busy}
-                      onClick={() => setModal('clearReceived')}
-                    >
-                      <Trash2 size={16} />
-                      删除所选文件
-                    </Button>
-                  </div>
-                  <select
-                    aria-label="按中转站筛选已接收文件"
-                    value={receivedStation}
-                    onChange={(event) => {
-                      setReceivedStation(event.target.value);
-                      setReceivedSelected([]);
-                    }}
-                  >
-                    <option value="all">全部中转站</option>
-                    {[
-                      ...new Map(
-                        received.map((f) => [
-                          f.stationId && f.stationName ? f.stationId : 'other',
-                          {
-                            id: f.stationId && f.stationName ? f.stationId : 'other',
-                            name: f.stationName || '其他',
-                          },
-                        ]),
-                      ).values(),
-                    ].map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ScrollArea
-                    memoryKey={`received:${receivedStation}`}
-                    resetOnKeyChange
-                    className="storage-list"
-                    tabIndex={0}
-                    aria-label="已接收文件列表"
-                  >
-                    {received.length ? (
-                      received
-                        .filter(
-                          (f) =>
-                            receivedStation === 'all' ||
-                            (f.stationId && f.stationName ? f.stationId : 'other') ===
-                              receivedStation,
-                        )
-                        .map((f) => (
-                          <label
-                            className="cache-row received-row"
-                            key={f.id}
-                            data-scroll-id={f.id}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={receivedSelected.includes(f.id)}
-                              onChange={(e) =>
-                                setReceivedSelected(
-                                  e.target.checked
-                                    ? [...receivedSelected, f.id]
-                                    : receivedSelected.filter((id) => id !== f.id),
-                                )
-                              }
-                            />
-                            <File size={20} />
-                            <div>
-                              <strong>{f.name}</strong>
-                              <small>
-                                {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
-                                <br />
-                                {f.path}
-                              </small>
-                            </div>
-                            <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
-                          </label>
-                        ))
+                    {cache?.entries.length ? (
+                      <>
+                        <label className="select-all">
+                          <input
+                            type="checkbox"
+                            checked={
+                              cache.entries.filter((e) => !e.busy).length > 0 &&
+                              cache.entries
+                                .filter((e) => !e.busy)
+                                .every((e) => selected.includes(e.id))
+                            }
+                            onChange={(e) =>
+                              setSelected(
+                                e.target.checked
+                                  ? cache.entries.filter((x) => !x.busy).map((x) => x.id)
+                                  : [],
+                              )
+                            }
+                          />
+                          选择所有可清理文件
+                        </label>
+                        <ScrollArea
+                          memoryKey={`cache:${admin.settings.cacheDir}`}
+                          className="storage-list"
+                          tabIndex={0}
+                          aria-label="中转缓存列表"
+                        >
+                          {cache.entries.map((e) => (
+                            <label
+                              className="cache-row"
+                              key={e.folder + e.id}
+                              data-scroll-id={e.folder + e.id}
+                            >
+                              <input
+                                type="checkbox"
+                                disabled={e.busy}
+                                checked={selected.includes(e.id)}
+                                onChange={(ev) =>
+                                  setSelected(
+                                    ev.target.checked
+                                      ? [...selected, e.id]
+                                      : selected.filter((id) => id !== e.id),
+                                  )
+                                }
+                              />
+                              <File size={20} />
+                              <div>
+                                <strong>{e.name}</strong>
+                                <small>
+                                  {sizes(e.bytes)} ·{' '}
+                                  {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
+                                  <br />
+                                  {e.expiresAt
+                                    ? `自动清理：${date(e.expiresAt)}`
+                                    : '尚未进入自动清理计时'}
+                                </small>
+                              </div>
+                              <Badge status={e.status} />
+                            </label>
+                          ))}
+                        </ScrollArea>
+                      </>
                     ) : (
-                      <Empty icon={<Download size={28} />} title="还没有本机接收文件">
-                        通过桌面应用接收的文件会列在这里。
+                      <Empty icon={<HardDrive size={28} />} title="缓存目录是空的">
+                        传输经过本机中转站后，文件会显示在这里。
                       </Empty>
                     )}
-                  </ScrollArea>
-                </section>
+                  </section>
+                )}
+                {page === 'received' && (
+                  <section className="panel received-panel">
+                    <div className="section-head">
+                      <div>
+                        <h2>客户端下载的文件</h2>
+                        <p className="subtle">正式文件，不会自动清理。</p>
+                      </div>
+                      <Button
+                        kind="danger"
+                        disabled={!receivedSelected.length || busy}
+                        onClick={() => setModal('clearReceived')}
+                      >
+                        <Trash2 size={16} />
+                        删除所选文件
+                      </Button>
+                    </div>
+                    <select
+                      aria-label="按中转站筛选已接收文件"
+                      value={receivedStation}
+                      onChange={(event) => {
+                        setReceivedStation(event.target.value);
+                        setReceivedSelected([]);
+                      }}
+                    >
+                      <option value="all">全部中转站</option>
+                      {[
+                        ...new Map(
+                          received.map((f) => [
+                            f.stationId && f.stationName ? f.stationId : 'other',
+                            {
+                              id: f.stationId && f.stationName ? f.stationId : 'other',
+                              name: f.stationName || '其他',
+                            },
+                          ]),
+                        ).values(),
+                      ].map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ScrollArea
+                      memoryKey={`received:${receivedStation}`}
+                      resetOnKeyChange
+                      className="storage-list"
+                      tabIndex={0}
+                      aria-label="已接收文件列表"
+                    >
+                      {received.length ? (
+                        received
+                          .filter(
+                            (f) =>
+                              receivedStation === 'all' ||
+                              (f.stationId && f.stationName ? f.stationId : 'other') ===
+                                receivedStation,
+                          )
+                          .map((f) => (
+                            <label
+                              className="cache-row received-row"
+                              key={f.id}
+                              data-scroll-id={f.id}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={receivedSelected.includes(f.id)}
+                                onChange={(e) =>
+                                  setReceivedSelected(
+                                    e.target.checked
+                                      ? [...receivedSelected, f.id]
+                                      : receivedSelected.filter((id) => id !== f.id),
+                                  )
+                                }
+                              />
+                              <File size={20} />
+                              <div>
+                                <strong>{f.name}</strong>
+                                <small>
+                                  {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
+                                  <br />
+                                  {f.path}
+                                </small>
+                              </div>
+                              <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
+                            </label>
+                          ))
+                      ) : (
+                        <Empty icon={<Download size={28} />} title="还没有本机接收文件">
+                          通过桌面应用接收的文件会列在这里。
+                        </Empty>
+                      )}
+                    </ScrollArea>
+                  </section>
+                )}
               </div>
-              <p className="storage-footnote">清理缓存保留历史和已接收文件。</p>
+              <p className="storage-footnote">
+                {page === 'cache'
+                  ? '清理中转缓存保留历史与客户端已接收文件。'
+                  : '删除本机文件保留收发记录与中转站缓存。'}
+              </p>
             </>
           )}
           {page === 'settings' && (
@@ -2090,7 +2133,10 @@ export default function App() {
         </Modal>
       )}
       {modal === 'storageLocations' && admin && (
-        <Modal title="存储位置与数据库整理" onClose={() => setModal(null)}>
+        <Modal
+          title={page === 'received' ? '接收文件位置' : '缓存位置与数据库整理'}
+          onClose={() => setModal(null)}
+        >
           <div className="storage-locations">
             <div className="paths">
               {[
@@ -2112,43 +2158,47 @@ export default function App() {
                   remark: '保存本机已接收的正式文件，不会自动清理。',
                   path: admin.settings.receiveDir,
                 },
-              ].map((location) => (
-                <section className="panel storage-location-card" key={location.key}>
-                  <h3>{location.title}</h3>
-                  <p className="subtle">{location.remark}</p>
-                  <div className="storage-location-path">
-                    <Button
-                      title={`复制${location.title}`}
-                      onClick={() => void run(() => copy(location.path))}
-                    >
-                      <Copy size={16} />
-                    </Button>
-                    <code>{location.path}</code>
-                  </div>
-                  <div className="storage-location-actions">
-                    <Button
-                      onClick={() => void run(() => window.relay3!.openDirectory(location.key))}
-                    >
-                      <FolderOpen size={16} />
-                      打开目录
-                    </Button>
-                    {location.key === 'data' && (
+              ]
+                .filter((location) =>
+                  page === 'received' ? location.key === 'receive' : location.key !== 'receive',
+                )
+                .map((location) => (
+                  <section className="panel storage-location-card" key={location.key}>
+                    <h3>{location.title}</h3>
+                    <p className="subtle">{location.remark}</p>
+                    <div className="storage-location-path">
                       <Button
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            await management('/database/compact', {});
-                            await refreshAdmin();
-                            inform('数据库已整理，历史记录保留');
-                          })
-                        }
+                        title={`复制${location.title}`}
+                        onClick={() => void run(() => copy(location.path))}
                       >
-                        整理空间
+                        <Copy size={16} />
                       </Button>
-                    )}
-                  </div>
-                </section>
-              ))}
+                      <code>{location.path}</code>
+                    </div>
+                    <div className="storage-location-actions">
+                      <Button
+                        onClick={() => void run(() => window.relay3!.openDirectory(location.key))}
+                      >
+                        <FolderOpen size={16} />
+                        打开目录
+                      </Button>
+                      {location.key === 'data' && (
+                        <Button
+                          disabled={busy}
+                          onClick={() =>
+                            void run(async () => {
+                              await management('/database/compact', {});
+                              await refreshAdmin();
+                              inform('数据库已整理，历史记录保留');
+                            })
+                          }
+                        >
+                          整理空间
+                        </Button>
+                      )}
+                    </div>
+                  </section>
+                ))}
             </div>
           </div>
         </Modal>

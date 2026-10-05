@@ -137,13 +137,13 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await tab('连接设备');
   await fixedWhileScrolling('.device-list', '.devices-layout > .panel:first-child .section-head');
   await scroll('.timeline', 420);
-  await tab('设置');
+  await tab('设备');
   await tab('连接设备');
   await expect.poll(() => top('.device-list')).toBeCloseTo(360, 0);
   await expect.poll(() => top('.timeline')).toBeCloseTo(420, 0);
   await tab('收发记录');
   await fixedWhileScrolling('.records-panel', '.history-toolbar');
-  await tab('设置');
+  await tab('设备');
   await tab('收发记录');
   await expect.poll(() => top('.records-panel')).toBeCloseTo(360, 0);
   await page.getByRole('button', { name: '我发送的', exact: true }).click();
@@ -151,27 +151,32 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await scroll('.records-panel');
   await page.locator('.pagination').getByRole('button').last().click();
   await expect.poll(() => top('.records-panel')).toBe(0);
-  await tab('本机存储');
+  await tab('中转缓存');
   await expect(page.locator('.storage-list[data-scroll-key^="cache:"] .cache-row')).toHaveCount(70);
   await fixedWhileScrolling(
     '.storage-list[data-scroll-key^="cache:"]',
     '.storage-files > .panel:first-child .section-head',
   );
+  await tab('接收文件');
+  await expect(page.locator('.cache-row:not(.received-row)')).toHaveCount(0);
   await scroll('.storage-list[data-scroll-key^="received:"]', 460);
-  await tab('设置');
-  await tab('本机存储');
+  await tab('设备');
+  await tab('中转缓存');
   await expect.poll(() => top('.storage-list[data-scroll-key^="cache:"]')).toBeCloseTo(360, 0);
+  await tab('接收文件');
   await expect.poll(() => top('.storage-list[data-scroll-key^="received:"]')).toBeCloseTo(460, 0);
+  await tab('中转缓存');
   const refresh = page.waitForResponse((r) => r.url().endsWith('/admin/cache'));
   await refresh;
   await expect.poll(() => top('.storage-list[data-scroll-key^="cache:"]')).toBeCloseTo(360, 0);
+  await tab('接收文件');
   await page.getByLabel('按中转站筛选已接收文件').selectOption('station-a');
   await expect.poll(() => top('.storage-list[data-scroll-key^="received:"]')).toBe(0);
   await scroll('.storage-list[data-scroll-key^="received:"]');
   await page.screenshot({ path: 'test-results/scroll-storage.png' });
   await tab('连接的中转站');
   await scroll('.connected-stations');
-  await tab('设置');
+  await tab('设备');
   await tab('连接的中转站');
   await expect.poll(() => top('.connected-stations')).toBeCloseTo(360, 0);
   expect(errors).toEqual([]);
@@ -190,7 +195,7 @@ test('小窗口发送与保存固定，路径弹窗正文滚动、Esc返回焦�
   await fixedWhileScrolling('.selected-files', '.send-footer');
   await fixedWhileScrolling('.transfer-items', '.transfer-queue .section-head');
   await page.screenshot({ path: 'test-results/scroll-small-transfer.png' });
-  await tab('设置');
+  await tab('设备');
   await page.getByText('诊断日志', { exact: true }).click();
   await fixedWhileScrolling('.settings-body', '.settings-actions');
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
@@ -199,14 +204,14 @@ test('小窗口发送与保存固定，路径弹窗正文滚动、Esc返回焦�
   const save = await page.locator('.settings-actions').boundingBox();
   expect(toast!.y + toast!.height).toBeLessThanOrEqual(save!.y);
   await page.screenshot({ path: 'test-results/scroll-small-settings.png' });
-  await tab('本机存储');
-  const trigger = page.getByRole('button', { name: '存储位置与数据库整理', exact: true });
+  await tab('中转缓存');
+  const trigger = page.getByRole('button', { name: '缓存位置与数据库整理', exact: true });
   await trigger.click();
-  const dialog = page.getByRole('dialog', { name: '存储位置与数据库整理' });
+  const dialog = page.getByRole('dialog', { name: '缓存位置与数据库整理' });
   const header = await dialog.locator('.dialog-head').boundingBox();
-  await scroll('.dialog-body', 160);
+  await scroll('.dialog-body', 20);
   expect((await dialog.locator('.dialog-head').boundingBox())!.y).toBeCloseTo(header!.y, 0);
-  await dialog.getByRole('button', { name: '复制接收文件位置', exact: true }).click();
+  await dialog.getByRole('button', { name: '复制中转文件位置', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -252,7 +257,7 @@ test('群聊历史不抢位置、密文分页回顶、清理长正文和下拉�
     content: '新的消息不抢历史',
   });
   await expect.poll(() => top(feed)).toBeCloseTo(600, 0);
-  await tab('设置');
+  await tab('设备');
   await tab('群聊大厅');
   await expect.poll(() => top(feed)).toBeCloseTo(600, 0);
   await page.getByRole('button', { name: '回到最新', exact: true }).click();
