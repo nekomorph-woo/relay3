@@ -55,6 +55,12 @@ test('桌面自动发现可选择并配对，更换地址复用凭证，名称�
       JSON.parse(localStorage.getItem('relay3-session')!),
     );
     expect(remote.pairingCode).not.toBe(code);
+    await page.locator('main').getByRole('button', { name: '连接其他中转站', exact: true }).click();
+    await expect(station.locator('.badge')).toHaveText('已连接');
+    await page
+      .getByRole('dialog', { name: '连接中转站' })
+      .getByRole('button', { name: '关闭', exact: true })
+      .click();
     await page.getByRole('button', { name: '断开中转站', exact: true }).click();
 
     // 仅保留旧地址的凭证，验证新发现地址按 stationId 找回凭证。
@@ -76,6 +82,7 @@ test('桌面自动发现可选择并配对，更换地址复用凭证，名称�
     await page.reload();
     await page.getByRole('button', { name: '连接中转站', exact: true }).click();
     await expect(station).toBeEnabled({ timeout: 20000 });
+    await expect(station.locator('.badge')).toHaveCount(0);
     await station.click();
     await expect(page.getByLabel('配对码', { exact: true })).toHaveValue('');
     await page.getByRole('button', { name: '连接', exact: true }).click();
@@ -93,7 +100,9 @@ test('桌面自动发现可选择并配对，更换地址复用凭证，名称�
     });
     await page.screenshot({ path: 'design/qa/desktop-station-discovery.png' });
     await remote.stopHub(true);
-    await expect(nearby.locator('.nearby-station')).toHaveCount(0, { timeout: 15000 });
+    await expect(nearby.getByRole('button', { name: /更名后的书房中转站/ })).toHaveCount(0, {
+      timeout: 15000,
+    });
     await page.evaluate(async (port) => {
       const boot = await window.relay3!.bootstrap();
       for (const [route, body] of [

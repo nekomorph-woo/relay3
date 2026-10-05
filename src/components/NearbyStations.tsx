@@ -6,10 +6,12 @@ import type { DiscoverySnapshot, DiscoveredStation } from '../discoveryTypes';
 export function NearbyStations({
   selectedBase,
   busy,
+  connectedStationIds,
   onSelect,
 }: {
   selectedBase: string;
   busy: boolean;
+  connectedStationIds: string[];
   onSelect: (station: DiscoveredStation) => void;
 }) {
   const [snapshot, setSnapshot] = useState<DiscoverySnapshot>({ stations: [] });
@@ -81,6 +83,9 @@ export function NearbyStations({
               <strong>
                 {station.name}
                 <DeviceTag platform={station.platform} />
+                {connectedStationIds.includes(station.stationId) && (
+                  <span className="badge positive">已连接</span>
+                )}
               </strong>
               <small>{station.base}</small>
             </span>

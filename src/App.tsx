@@ -2243,6 +2243,9 @@ export default function App() {
             <NearbyStations
               selectedBase={connectUrl}
               busy={busy}
+              connectedStationIds={Object.values(multi.connections)
+                .filter((connection) => connection.status === 'connected')
+                .map((connection) => connection.session.stationId)}
               onSelect={(station) => {
                 setConnectUrl(station.base);
                 setPairing('');
