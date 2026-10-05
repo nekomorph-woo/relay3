@@ -9,6 +9,7 @@ export function connectStation(
     status: (status: ConnectionStatus) => void;
     expired: (code: number) => void;
     error: (error: unknown) => void;
+    reminder?: (packageId: string, senderName: string) => void;
   },
   createSocket = (url: string): WebSocket => new WebSocket(url),
 ) {
@@ -50,6 +51,16 @@ export function connectStation(
       if (!active()) return;
       try {
         const hub = JSON.parse(event.data);
+        if (
+          hub.type === 'package-reminder' &&
+          hub.stationId === session.stationId &&
+          typeof hub.packageId === 'string' &&
+          typeof hub.senderName === 'string'
+        ) {
+          lastReply = Date.now();
+          callbacks.reminder?.(hub.packageId, hub.senderName);
+          return;
+        }
         if (supportsHeartbeat && hub.type === 'pong') {
           lastReply = Date.now();
           return;

@@ -135,9 +135,11 @@ test('普通多目标离线发送、上传完成后独立接收、服务端任�
     buffer: Buffer.from('多目标共享缓存'),
   });
   await desktop.getByRole('button', { name: '发送', exact: true }).click();
-  await expect(desktop.locator('.transfer-row')).toHaveCount(2);
+  await expect(desktop.locator('.file-package')).toHaveCount(1);
+  await desktop.locator('.package-summary').click();
+  await expect(desktop.locator('.package-file-row')).toHaveCount(1);
   await expect.poll(async () => (await admin('/cache')).entries.length).toBe(1);
-  const row = phone.locator('.transfer-row').filter({ hasText: '多目标.txt' });
+  const row = phone.locator('.package-file-row').filter({ hasText: '多目标.txt' });
   const event = phone.waitForEvent('download');
   await row.getByRole('button', { name: '接收', exact: true }).click();
   const download = await event;
@@ -173,14 +175,14 @@ test('本机文件删除后可重新下载、下载时间更新与缓存清理�
     buffer: Buffer.from('重新下载验证'),
   });
   await phone.getByRole('button', { name: '发送', exact: true }).click();
-  const row = desktop.locator('.transfer-row').filter({ hasText: '重新下载.txt' });
+  const row = desktop.locator('.package-file-row').filter({ hasText: '重新下载.txt' });
   await row.getByRole('button', { name: '接收', exact: true }).click();
   await expect.poll(async () => (await admin('/received')).entries.length).toBe(1);
   const first = (await admin('/received')).entries[0];
   expect(readFileSync(first.path).toString()).toBe('重新下载验证');
   unlinkSync(first.path);
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
-  const history = desktop.locator('.record-row').filter({ hasText: '重新下载.txt' });
+  const history = desktop.locator('.package-file-row').filter({ hasText: '重新下载.txt' });
   await expect(history).toContainText('可重新下载');
   await history.getByRole('button', { name: '重新下载', exact: true }).click();
   await expect
@@ -235,13 +237,17 @@ test('群聊文件名加密、手机大厅接收、Emoji本地加载和输入留
   await modal.getByLabel('文件公开备注').fill('公开文件说明');
   await modal.getByRole('button', { name: '发送文件', exact: true }).click();
   await expect(modal).toHaveCount(0);
-  const message = phone.locator('.bbs-message').filter({ hasText: '加密文件名.txt' });
+  const message = phone.locator('.bbs-message').filter({ hasText: '公开文件说明' });
+  await message.getByRole('button', { name: '打开文件包' }).click();
+  const detail = phone.getByRole('dialog', { name: '文件包详情' });
+  const file = detail.locator('.package-file-row').filter({ hasText: '加密文件名.txt' });
   await expect(message).toContainText('公开文件说明');
   const event = phone.waitForEvent('download');
-  await message.getByRole('button', { name: '接收', exact: true }).click();
+  await file.getByRole('button', { name: '接收', exact: true }).click();
   await event;
-  await message.getByRole('button', { name: '确认收到' }).click();
-  await expect(message).toContainText('已下载过');
+  await file.getByRole('button', { name: '确认收到' }).click();
+  await expect(file).toContainText('已下载过');
+  await detail.getByRole('button', { name: '关闭文件包详情' }).click();
   await desktop.getByLabel('文字消息').fill('你好 😀 <b>原文</b>');
   await desktop.getByRole('button', { name: '发送文字', exact: true }).click();
   await expect(

@@ -47,6 +47,9 @@ export class FileDelivery {
     service.store.db.exec(
       'CREATE TABLE IF NOT EXISTS shared_files (id TEXT PRIMARY KEY, data TEXT NOT NULL)',
     );
+    service.store.db.exec(
+      "CREATE INDEX IF NOT EXISTS transfers_file ON transfers(json_extract(data,'$.fileId'))",
+    );
     for (const f of this.all())
       if (f.state === 'uploading')
         this.save({ ...f, state: 'failed', error: '上传中断，请重新选择原文件重试' });
@@ -70,7 +73,11 @@ export class FileDelivery {
     return path.join(this.service.store.settings.cacheDir, partial ? 'partial' : 'ready', f.id);
   }
   transfers(id: string) {
-    return this.service.store.transfers().filter((t) => t.fileId === id);
+    return (
+      this.service.store.db
+        .prepare("SELECT data FROM transfers WHERE json_extract(data,'$.fileId')=?")
+        .all(id) as { data: string }[]
+    ).map((r) => JSON.parse(r.data) as Transfer);
   }
   busy(id: string) {
     return (
@@ -114,7 +121,7 @@ export class FileDelivery {
     try {
       await rm(this.filename(f), { force: true });
       await rm(this.filename(f, true), { force: true });
-      this.save({ ...f, state: 'cleaned', cleanedAt: Date.now() });
+      this.save({ ...this.get(id), state: 'cleaned', cleanedAt: Date.now() });
       this.patchTransfers(id, { cleanedAt: Date.now() });
       if (task) {
         this.service.tasks.progress(task, 1);
@@ -430,6 +437,7 @@ export class FileDelivery {
             : receiveDeadline + this.service.store.settings.retentionHours * 3600000;
       const checksum = hash.digest('hex');
       if (f.expectedSha256 && checksum !== f.expectedSha256) throw new Error('文件与原任务不一致');
+      if (f.packageId) this.service.packages.assertUploading(f.packageId);
       renameSync(this.filename(f, true), this.filename(f));
       const next = {
         ...f,
@@ -490,7 +498,11 @@ export class FileDelivery {
       return this.service.update(t, { status: 'cancelled', error: '该接收任务已取消' });
     }
     if (d.id !== t.recipientId) fail('只有接收设备可以操作', 403);
-    if (f.packageId && this.service.packages.get(f.packageId).state !== 'ready')
+    if (
+      f.packageId &&
+      (!this.service.packages.authorized(this.service.packages.get(f.packageId), d.id) ||
+        this.service.packages.get(f.packageId).state !== 'ready')
+    )
       fail('文件包尚未生效或已取消', 409);
     if (action === 'complete' && t.status === 'completed') return t;
     if (action === 'complete' && t.status === 'awaiting-confirm')
@@ -520,7 +532,11 @@ export class FileDelivery {
       fail('连接凭证无效', 401);
     if (d.id !== t.recipientId) fail('只有接收设备可以下载', 403);
     const f = this.get(t.fileId!);
-    if (f.packageId && this.service.packages.get(f.packageId).state !== 'ready')
+    if (
+      f.packageId &&
+      (!this.service.packages.authorized(this.service.packages.get(f.packageId), d.id) ||
+        this.service.packages.get(f.packageId).state !== 'ready')
+    )
       fail('文件包尚未生效或已取消', 409);
     this.expire(f);
     t = this.service.getTransfer(t.id);
@@ -558,7 +574,10 @@ export class FileDelivery {
       finished = true;
       this.service.streams.delete(t.id);
       const current = this.service.getTransfer(t.id);
-      if (current.status !== 'cancelled')
+      if (
+        current.status !== 'cancelled' &&
+        (!f.packageId || this.service.packages.get(f.packageId).state !== 'cancelled')
+      )
         this.service.update(current, {
           status: success ? 'awaiting-confirm' : prior,
           downloaded: bytes,

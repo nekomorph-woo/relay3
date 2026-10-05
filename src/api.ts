@@ -60,6 +60,7 @@ export interface CacheState {
   freeBytes: number;
   entries: {
     id: string;
+    packageId?: string;
     folder: string;
     chatMessageId?: number;
     path: string;
@@ -107,6 +108,7 @@ declare global {
         name: string;
         size: number;
         sha256: string;
+        packageId?: string;
         stationId?: string;
         stationName?: string;
       }): Promise<{ path: string; confirmed: boolean }>;

@@ -25,7 +25,27 @@ export interface LocalFile {
   receivedAt: number;
 }
 const sharedRequests = new Map<string, Promise<SharedFile>>();
-type FileNameSource = Pick<Transfer, 'name' | 'fileId' | 'chatMessageId' | 'stationId'>;
+type FileNameSource = Pick<
+  Transfer,
+  'name' | 'fileId' | 'chatMessageId' | 'stationId' | 'packageId'
+>;
+export async function resolveFileName(f: SharedFile, session: Session) {
+  if (!f.envelope) return f.name;
+  const identity = window.relay3
+    ? await window.relay3.chatIdentity()
+    : stored<ChatIdentity | null>(`relay3-chat-key:${session.id}`, null);
+  return identity
+    ? decryptMessage(f.envelope, identity, session.id, {
+        stationId: session.stationId,
+        senderId: f.senderId,
+        remark: f.remark,
+        remarkStyle: f.remarkStyle,
+        purpose: 'file-name',
+        fileId: f.id,
+        packageId: f.packageId,
+      })
+    : null;
+}
 export function useTransferName(t: FileNameSource, session?: Session) {
   const [name, setName] = useState(t.name);
   useEffect(() => {
@@ -56,6 +76,7 @@ export function useTransferName(t: FileNameSource, session?: Session) {
                 remarkStyle: f.remarkStyle,
                 purpose: 'file-name',
                 fileId: f.id,
+                packageId: f.packageId,
               })
             : null;
         if (!dead) setName(value ?? '未知文件');
@@ -66,6 +87,7 @@ export function useTransferName(t: FileNameSource, session?: Session) {
     };
   }, [
     t.fileId,
+    t.packageId,
     t.chatMessageId,
     t.name,
     t.stationId,
@@ -160,6 +182,7 @@ export function FileTask({
         base: session.base,
         token: session.token,
         id: t.id,
+        packageId: t.packageId,
         name: name ?? resolvedName,
         size: t.size,
         sha256: task.sha256!,
@@ -199,46 +222,50 @@ export function FileTask({
         </small>
       )}
       <div className="file-task-actions">
-        {session?.id === t.senderId && t.fileId && ['failed', 'accepted'].includes(t.status) && (
-          <label className="retry-file">
-            重新选择原文件上传
-            <input
-              type="file"
-              aria-label="重新选择原文件上传"
-              disabled={busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file || !session) return;
-                setBusy(true);
-                void request<SharedFile & { transfers: Transfer[] }>(
-                  session.base,
-                  session.token,
-                  `/api/files/${t.fileId}`,
-                )
-                  .then((f) =>
-                    deliverFile(
-                      session,
-                      file,
-                      f.transfers.map((t) => t.recipientId),
-                      f.bufferMinutes,
-                      {
-                        id: f.id,
-                        envelope: f.envelope,
-                        remark: f.remark,
-                        remarkStyle: f.remarkStyle,
-                      },
-                    ),
+        {session?.id === t.senderId &&
+          t.fileId &&
+          !t.packageId &&
+          ['failed', 'accepted'].includes(t.status) && (
+            <label className="retry-file">
+              重新选择原文件上传
+              <input
+                type="file"
+                aria-label="重新选择原文件上传"
+                disabled={busy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file || !session) return;
+                  setBusy(true);
+                  void request<SharedFile & { transfers: Transfer[] }>(
+                    session.base,
+                    session.token,
+                    `/api/files/${t.fileId}`,
                   )
-                  .then(onUpdated)
-                  .catch((e) => onError(e.message))
-                  .finally(() => setBusy(false));
-              }}
-            />
-          </label>
-        )}
+                    .then((f) =>
+                      deliverFile(
+                        session,
+                        file,
+                        f.transfers.map((t) => t.recipientId),
+                        f.bufferMinutes,
+                        {
+                          id: f.id,
+                          envelope: f.envelope,
+                          remark: f.remark,
+                          remarkStyle: f.remarkStyle,
+                        },
+                      ),
+                    )
+                    .then(onUpdated)
+                    .catch((e) => onError(e.message))
+                    .finally(() => setBusy(false));
+                }}
+              />
+            </label>
+          )}
 
         {session &&
+          !(t.packageId && session.id === t.senderId) &&
           incoming &&
           !t.cleanedAt &&
           t.status === 'pending' &&
@@ -255,7 +282,9 @@ export function FileTask({
         {session &&
           incoming &&
           !t.cleanedAt &&
-          (['ready', 'awaiting-confirm'].includes(t.status) || canRepeat) && (
+          ((['ready', 'awaiting-confirm'].includes(t.status) &&
+            Date.now() < (t.receiveDeadline ?? Infinity)) ||
+            canRepeat) && (
             <button disabled={busy} onClick={() => void operate('download')}>
               {canRepeat ? '重新下载' : '下载文件'}
             </button>
@@ -291,6 +320,7 @@ export function FileTask({
           </button>
         )}
         {session &&
+          !(t.packageId && session.id === t.senderId) &&
           ['accepted', 'uploading', 'pending', 'ready', 'downloading'].includes(t.status) && (
             <button disabled={busy} onClick={() => void operate('cancel')}>
               取消

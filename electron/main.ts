@@ -307,6 +307,7 @@ else {
           name: string;
           size: number;
           sha256: string;
+          packageId?: string;
           stationId?: string;
           stationName?: string;
         }) => {
@@ -394,6 +395,7 @@ else {
             service.store.saveReceived({
               id: `${stationId ?? base}:${input.id}`,
               transferId: input.id,
+              packageId: input.packageId,
               name: path.basename(destination),
               path: destination,
               size: bytes,

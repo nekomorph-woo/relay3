@@ -267,3 +267,166 @@ test('提醒有冷却且仅在线待处理者；包级清理跳过传输文件�
     await f.close();
   }
 });
+
+test('过D后排队文件不能首次下载，过T清理缓存但保持包和下载历史', async () => {
+  const f = await fixture();
+  try {
+    const body = f.manifest();
+    await f.call('/api/packages', f.a.token, body);
+    await f.upload(body, 0, '甲');
+    await f.upload(body, 1, '乙');
+    const p = (await f.call(`/api/packages/${body.id}/publish`, f.a.token, {})).data;
+    const first = p.files[0].transfers[0],
+      second = p.files[1].transfers[0];
+    await f.call(`/api/transfers/${first.id}/accept`, f.b.token, {});
+    const download = await f.s.hub.inject({
+      method: 'GET',
+      url: `/api/transfers/${first.id}/download`,
+      headers: { Authorization: 'Bearer ' + f.b.token },
+    });
+    assert.equal(download.statusCode, 200);
+    assert.equal(download.body, '甲');
+    await f.call(`/api/transfers/${first.id}/complete`, f.b.token, {});
+    for (const file of p.files)
+      f.s.files.save({ ...f.s.files.get(file.id), receiveDeadline: Date.now() - 1 });
+    assert.equal((await f.call(`/api/transfers/${second.id}/accept`, f.b.token, {})).status, 409);
+    assert.equal((await f.call(`/api/transfers/${second.id}/reject`, f.b.token, {})).status, 409);
+    assert.equal(f.s.getTransfer(second.id).status, 'expired');
+    const repeat = await f.s.hub.inject({
+      method: 'GET',
+      url: `/api/transfers/${first.id}/download`,
+      headers: { Authorization: 'Bearer ' + f.b.token },
+    });
+    assert.equal(repeat.statusCode, 200);
+    await f.call(`/api/transfers/${first.id}/complete`, f.b.token, {});
+    const last = f.s.getTransfer(first.id).lastDownloadedAt;
+    await f.s.files.cleaning;
+    await f.s.files.maintenance(p.expiresAt + 1);
+    assert.ok(f.s.files.get(p.files[0].id).cleanedAt);
+    assert.equal(f.s.getTransfer(first.id).lastDownloadedAt, last);
+    assert.equal(f.s.packages.get(p.id).state, 'ready');
+    assert.equal((await f.call('/api/history?groupPackages=1', f.b.token)).data.packages.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('取消重复下载保留已收到状态，已清理的成员不能再接受；旧逐文件接口仍兼容', async () => {
+  const f = await fixture();
+  try {
+    const body = f.manifest();
+    await f.call('/api/packages', f.a.token, body);
+    await f.upload(body, 0, '甲');
+    await f.upload(body, 1, '乙');
+    const p = (await f.call(`/api/packages/${body.id}/publish`, f.a.token, {})).data;
+    const t = p.files[0].transfers[0],
+      time = Date.now();
+    f.s.store.saveTransfer({ ...t, status: 'downloading', lastDownloadedAt: time });
+    f.s.streams.set(t.id, new AbortController());
+    await f.call(`/api/packages/${p.id}/cancel`, f.a.token, {});
+    assert.equal(f.s.getTransfer(t.id).status, 'completed');
+    assert.equal(f.s.getTransfer(t.id).lastDownloadedAt, time);
+    assert.equal(f.s.streams.get(t.id).signal.aborted, true);
+    f.s.streams.delete(t.id);
+    assert.equal((await f.call(`/api/transfers/${t.id}/complete`, f.b.token, {})).status, 409);
+    const legacy = await f.call('/api/files', f.a.token, {
+      id: randomUUID(),
+      name: '旧客户端.txt',
+      remark: '',
+      remarkStyle: 'note',
+      size: 3,
+      recipientIds: [f.b.id],
+      bufferMinutes: 10,
+      expectedSha256: hash('甲'),
+    });
+    assert.equal(legacy.status, 200);
+    const up = await f.call(
+      `/api/files/${legacy.data.id}/upload`,
+      f.a.token,
+      Buffer.from('甲'),
+      'PUT',
+    );
+    assert.equal(up.status, 200);
+    assert.equal(f.s.files.get(legacy.data.id).state, 'ready');
+  } finally {
+    await f.close();
+  }
+});
+
+test('按包分页记录不拆包；跨站缓存拒绝较旧快照，包元数据与旧记录共存', async () => {
+  const f = await fixture();
+  try {
+    const body = f.manifest();
+    await f.call('/api/packages', f.a.token, body);
+    await f.upload(body, 0, '甲');
+    await f.upload(body, 1, '乙');
+    const p = (await f.call(`/api/packages/${body.id}/publish`, f.a.token, {})).data;
+    const page = (await f.call('/api/history?groupPackages=1', f.a.token)).data;
+    assert.equal(page.total, 1);
+    assert.equal(page.items.length, 2);
+    assert.equal(page.packages.length, 1);
+    const remote = {
+      ...p,
+      stationId: randomUUID(),
+      senderId: f.s.store.settings.deviceId,
+      snapshotAt: 20,
+      state: 'cancelled',
+    };
+    remote.files = p.files.map((file) => ({
+      ...file,
+      senderId: remote.senderId,
+      transfers: file.transfers.map((t) => ({
+        ...t,
+        stationId: remote.stationId,
+        senderId: remote.senderId,
+        status: 'cancelled',
+      })),
+    }));
+    f.s.packages.remember([remote]);
+    f.s.packages.remember([{ ...remote, snapshotAt: 10, state: 'ready' }]);
+    const cached = JSON.parse(
+      f.s.store.db
+        .prepare('SELECT data FROM remote_packages WHERE id=?')
+        .get(`${remote.stationId}:${remote.id}`).data,
+    );
+    assert.equal(cached.state, 'cancelled');
+    const merged = f.s.packages.recordPage(
+      [...f.s.store.transfers(), ...remote.files.flatMap((file) => file.transfers)],
+      0,
+    );
+    assert.equal(merged.total, 2);
+    assert.equal(merged.packages.length, 2);
+  } finally {
+    await f.close();
+  }
+});
+
+test('重启后保留暂存成功成员和固定期限，24小时未成包自动取消', async () => {
+  const f = await fixture();
+  let next;
+  try {
+    const draft = f.manifest();
+    await f.call('/api/packages', f.a.token, draft);
+    await f.upload(draft, 0, '甲');
+    const body = f.manifest();
+    await f.call('/api/packages', f.a.token, body);
+    await f.upload(body, 0, '甲');
+    await f.upload(body, 1, '乙');
+    const p = (await f.call(`/api/packages/${body.id}/publish`, f.a.token, {})).data;
+    const dir = f.s.store.dataDir;
+    for (const d of [f.a, f.b, f.c]) d.socket.close();
+    await f.s.close();
+    next = new RelayService(dir, path.resolve('dist'));
+    await next.startHub();
+    assert.equal(next.packages.get(p.id).receiveDeadline, p.receiveDeadline);
+    assert.equal(next.files.get(draft.files[0].id).state, 'staged');
+    assert.equal(next.packages.view(next.packages.get(draft.id), f.a.id).files.length, 2);
+    await next.files.cleaning;
+    await next.files.maintenance(next.packages.get(draft.id).createdAt + 86400001);
+    assert.equal(next.packages.get(draft.id).state, 'cancelled');
+    assert.equal(next.files.get(draft.files[0].id).state, 'cleaned');
+  } finally {
+    await next?.close();
+    await f.close();
+  }
+});

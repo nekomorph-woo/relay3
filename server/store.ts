@@ -47,6 +47,7 @@ export interface Device {
   ip: string;
 }
 export interface Transfer {
+  updatedAt?: number;
   packageId?: string;
   fileId?: string;
   chatMessageId?: number;
@@ -236,6 +237,7 @@ export class Store {
     ).map((r) => JSON.parse(r.data));
   }
   saveTransfer(t: Transfer) {
+    t.updatedAt = Date.now();
     this.db.prepare('INSERT OR REPLACE INTO transfers VALUES (?,?)').run(t.id, JSON.stringify(t));
   }
   remember(records: Transfer[]) {
@@ -252,6 +254,7 @@ export class Store {
             .prepare('SELECT data FROM remote_records WHERE id=?')
             .get(key) as { data: string } | undefined;
           const old = previous ? JSON.parse(previous.data) : undefined;
+          if ((old?.updatedAt ?? 0) > (t.updatedAt ?? 0)) continue;
           stmt.run(
             key,
             JSON.stringify({

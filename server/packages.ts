@@ -32,6 +32,7 @@ export interface FilePackage {
 export interface PackageView extends Omit<FilePackage, 'requestHash'> {
   files: (SharedFile & { transfers: Transfer[]; position: number })[];
   removedCount: number;
+  snapshotAt: number;
 }
 function fail(message: string, statusCode = 400): never {
   throw Object.assign(new Error(message), { statusCode });
@@ -90,6 +91,7 @@ export class FilePackages {
     const { requestHash, ...visible } = p;
     return {
       ...visible,
+      snapshotAt: Date.now(),
       envelope:
         id && id !== p.senderId && p.envelope
           ? { ...p.envelope, recipients: p.envelope.recipients.filter((r) => r.id === id) }
@@ -205,10 +207,10 @@ export class FilePackages {
         const original = b.files[0].envelope as Envelope;
         if (
           !e ||
+          !validEnvelope(e) ||
           e.clientId !== p.id ||
           JSON.stringify(e.recipients.map((r) => [r.id, r.publicKey])) !==
-            JSON.stringify(original.recipients.map((r) => [r.id, r.publicKey])) ||
-          !validEnvelope(e)
+            JSON.stringify(original.recipients.map((r) => [r.id, r.publicKey]))
         )
           fail('文件包密文无效');
       }
@@ -347,7 +349,10 @@ export class FilePackages {
         const f = this.service.files.get(fileId);
         this.service.files.save({ ...f, expiresAt: cancelledAt });
         for (const t of this.service.files.transfers(fileId)) {
+          if (t.lastDownloadedAt && t.status === 'downloading')
+            this.service.store.saveTransfer({ ...t, status: 'completed' });
           if (
+            !t.lastDownloadedAt &&
             !['completed', 'rejected', 'expired', 'receive-expired', 'cancelled'].includes(t.status)
           )
             this.service.store.saveTransfer({
@@ -391,6 +396,7 @@ export class FilePackages {
     return { ...m, envelope: null, content: null };
   }
   async clean(id: string) {
+    if (this.service.cacheMigration) fail('缓存迁移中，请稍后清理', 409);
     const p = this.get(id);
     const results = [];
     for (const { fileId } of this.members(p.id)) {
@@ -450,6 +456,82 @@ export class FilePackages {
     }
     return { notified, skipped };
   }
+  remember(views: PackageView[]) {
+    if (!Array.isArray(views) || views.length > 100) fail('文件包记录无效');
+    const self = this.service.store.settings.deviceId;
+    for (const p of views) {
+      if (
+        !p ||
+        typeof p.id !== 'string' ||
+        typeof p.stationId !== 'string' ||
+        !Array.isArray(p.files) ||
+        p.files.length > 100 ||
+        !Array.isArray(p.recipients) ||
+        (p.senderId !== self && !p.recipients.some((d) => d.id === self))
+      )
+        fail('文件包来源或身份无效');
+      if (p.stationId === this.service.store.settings.stationId) continue;
+      const previous = this.service.store.db
+        .prepare('SELECT data FROM remote_packages WHERE id=?')
+        .get(`${p.stationId}:${p.id}`) as { data: string } | undefined;
+      if (previous && (JSON.parse(previous.data).snapshotAt ?? 0) > (p.snapshotAt ?? 0)) continue;
+      this.service.store.db
+        .prepare('INSERT OR REPLACE INTO remote_packages VALUES (?,?)')
+        .run(`${p.stationId}:${p.id}`, JSON.stringify(p));
+      this.service.store.remember(p.files.flatMap((f) => f.transfers));
+    }
+  }
+  recordPage(records: Transfer[], offset: number, actor?: string) {
+    // 先分页包标识，再读取完整成员，避免为每页反复展开所有历史文件。
+    const local = new Map(
+      this.all()
+        .filter((p) => !actor || this.authorized(p, actor))
+        .map((p) => [`${p.stationId}:${p.id}`, p]),
+    );
+    const remote = new Set(
+      !actor
+        ? (
+            this.service.store.db.prepare('SELECT id FROM remote_packages').all() as {
+              id: string;
+            }[]
+          ).map((r) => r.id)
+        : [],
+    );
+    const groups = new Map<string, Transfer[]>();
+    for (const t of records) {
+      const key =
+        t.packageId &&
+        (local.has(`${t.stationId}:${t.packageId}`) || remote.has(`${t.stationId}:${t.packageId}`))
+          ? `package:${t.stationId}:${t.packageId}`
+          : `transfer:${t.stationId}:${t.id}`;
+      const group = groups.get(key) ?? [];
+      group.push(t);
+      groups.set(key, group);
+    }
+    const page = [...groups.entries()].slice(offset, offset + 50);
+    return {
+      items: page.flatMap(([, rows]) => rows),
+      packages: page
+        .filter(([key]) => key.startsWith('package:'))
+        .map(([, rows]) => {
+          const key = `${rows[0].stationId}:${rows[0].packageId}`,
+            p = local.get(key);
+          if (p) return this.view(p, actor);
+          const row = this.service.store.db
+            .prepare('SELECT data FROM remote_packages WHERE id=?')
+            .get(key) as { data: string };
+          const view = JSON.parse(row.data) as PackageView;
+          return {
+            ...view,
+            files: view.files.map((f) => ({
+              ...f,
+              transfers: f.transfers.map((t) => rows.find((r) => r.id === t.id) ?? t),
+            })),
+          };
+        }),
+      total: groups.size,
+    };
+  }
   register(app: FastifyInstance, admin = false) {
     if (admin) {
       app.get('/admin/packages', async () => ({
@@ -461,13 +543,32 @@ export class FilePackages {
       app.get('/admin/packages/:id', async (r) => this.view(this.get((r.params as any).id)));
       return;
     }
-    app.post('/api/packages', async (r) => this.create(this.service.device(r), r.body));
+    app.post('/api/packages', { bodyLimit: 8 * 1024 * 1024 }, async (r) =>
+      this.create(this.service.device(r), r.body),
+    );
     app.get('/api/packages', async (r) => {
       const d = this.service.device(r),
         q = r.query as any;
-      const all = this.all().filter(
-        (p) => this.authorized(p, d.id) && (p.readyAt || p.senderId === d.id),
-      );
+      const all = this.all()
+        .filter((p) => this.authorized(p, d.id) && (p.readyAt || p.senderId === d.id))
+        .filter(
+          (p) =>
+            !q.active ||
+            (p.state === 'uploading' && p.senderId === d.id) ||
+            (p.state === 'ready' &&
+              this.members(p.id).some(({ fileId }) => {
+                this.service.files.expire(this.service.files.get(fileId));
+                return this.service.files
+                  .transfers(fileId)
+                  .some(
+                    (t) =>
+                      (t.senderId === d.id || t.recipientId === d.id) &&
+                      !t.cleanedAt &&
+                      (['pending', 'ready', 'downloading', 'awaiting-confirm'].includes(t.status) ||
+                        (!!t.lastDownloadedAt && Date.now() < (t.expiresAt ?? 0))),
+                  );
+              })),
+        );
       const offset = Math.max(0, Number(q.offset) || 0);
       return {
         items: all.slice(offset, offset + 30).map((p) => this.view(p, d.id)),
@@ -505,6 +606,7 @@ function validEnvelope(e: Envelope) {
     b64(e.body, Buffer.from(e.body, 'base64').length) &&
     Buffer.from(e.body, 'base64').length >= 17 &&
     Buffer.from(e.body, 'base64').length <= 4016 &&
-    e.recipients.every((r) => b64(r.publicKey, 32) && b64(r.nonce, 12) && b64(r.key, 48))
+    Array.isArray(e.recipients) &&
+    e.recipients.every((r) => r && b64(r.publicKey, 32) && b64(r.nonce, 12) && b64(r.key, 48))
   );
 }

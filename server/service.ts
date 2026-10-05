@@ -574,8 +574,9 @@ export class RelayService {
       );
       const offset = Math.max(0, Number(q.offset) || 0);
       return {
-        items: filtered.slice(offset, offset + 50),
-        total: filtered.length,
+        ...(q.groupPackages
+          ? this.packages.recordPage(filtered, offset)
+          : { items: filtered.slice(offset, offset + 50), total: filtered.length }),
         stations: [
           ...new Map(
             all.map((t) => [
@@ -589,10 +590,11 @@ export class RelayService {
         ],
       };
     });
-    app.post('/admin/remember', async (r) => {
+    app.post('/admin/remember', { bodyLimit: 64 * 1024 * 1024 }, async (r) => {
       const records = (r.body as any)?.records;
       if (!Array.isArray(records) || records.length > 500) fail('记录无效');
       this.store.remember(records);
+      if ((r.body as any)?.packages) this.packages.remember((r.body as any).packages);
       return { ok: true };
     });
     app.post('/admin/records/clear', async () => ({ deleted: this.store.clearRecords() }));
@@ -902,7 +904,9 @@ export class RelayService {
           (q.direction === 'send' ? t.senderId === d.id : t.recipientId === d.id),
       );
       const offset = Math.max(0, Number(q.offset) || 0);
-      return { items: visible.slice(offset, offset + 50), total: visible.length };
+      return q.groupPackages
+        ? this.packages.recordPage(visible, offset, d.id)
+        : { items: visible.slice(offset, offset + 50), total: visible.length };
     });
     app.post('/api/identity/reset', async (r) => {
       this.revokeDevice(this.device(r).id);

@@ -1,4 +1,10 @@
 import { deliverFile } from './fileDelivery';
+import { deliverPackage, rememberPackages } from './packageDelivery';
+import { PackageDialog } from './components/PackageDialog';
+import { FilePackageCard } from './components/FilePackage';
+import { PackageList } from './components/PackageList';
+import { PackageCache } from './components/PackageCache';
+import type { PackageView } from '../server/packages';
 import { Recipients, ReceiveBuffer } from './components/Recipients';
 import { FileTask, TransferName, type LocalFile } from './components/FileTask';
 import { BackgroundTasks } from './components/BackgroundTasks';
@@ -204,8 +210,74 @@ export default function App() {
     [admin, setAdmin] = useState<AdminState | null>(null),
     [stationOperation, setStationOperation] = useState<'start' | 'stop' | null>(null),
     [page, setPage] = useState<Page>('transfer');
+  const [packageReminder, setPackageReminder] = useState<{
+    stationId: string;
+    packageId: string;
+    senderName: string;
+  } | null>(null);
+  const [reminderDialog, setReminderDialog] = useState<{
+    stationId: string;
+    packageId: string;
+  } | null>(null);
+  const [historyPackages, setHistoryPackages] = useState<PackageView[]>([]);
   const multi = useConnections(desktop, inform);
   const { session, hub, connected } = multi;
+  useEffect(() => {
+    const remind = (event: Event) => setPackageReminder((event as CustomEvent).detail);
+    window.addEventListener('relay3-package-reminder', remind);
+    return () => window.removeEventListener('relay3-package-reminder', remind);
+  }, []);
+  const syncSignature = JSON.stringify(
+    Object.values(multi.connections).map((c) => [c.session.stationId, c.status]),
+  );
+  useEffect(() => {
+    if (!boot) return;
+    let dead = false,
+      loading = false;
+    const poll = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        for (const c of Object.values(multi.current.current)) {
+          if (dead || c.status !== 'connected' || !c.hub?.filePackages) continue;
+          const result = await request<{ items: PackageView[] }>(
+            c.session.base,
+            c.session.token,
+            '/api/packages',
+          );
+          const missing = [
+            ...new Set(
+              c.hub.transfers
+                .map((t) => t.packageId)
+                .filter((id) => id && !result.items.some((p) => p.id === id)),
+            ),
+          ];
+          for (const id of missing) {
+            if (dead) break;
+            const p = await request<PackageView>(
+              c.session.base,
+              c.session.token,
+              `/api/packages/${id}`,
+            ).catch(() => null);
+            if (p) result.items.push(p);
+          }
+          if (!dead)
+            for (let i = 0; i < result.items.length; i += 50)
+              await rememberPackages(result.items.slice(i, i + 50));
+        }
+      } catch {
+      } finally {
+        loading = false;
+      }
+    };
+    void poll();
+    const timer = setInterval(poll, 5000);
+    return () => {
+      dead = true;
+      clearInterval(timer);
+    };
+  }, [boot, syncSignature]);
+
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null),
     [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -515,7 +587,7 @@ export default function App() {
     let dead = false;
     const poll = async () => {
       try {
-        const q = `?offset=${offset}&search=${encodeURIComponent(search)}&direction=${filter}&station=${encodeURIComponent(historyStation === 'all' ? '' : historyStation)}`;
+        const q = `?groupPackages=1&offset=${offset}&search=${encodeURIComponent(search)}&direction=${filter}&station=${encodeURIComponent(historyStation === 'all' ? '' : historyStation)}`;
         const result = boot
           ? await management('/records' + q)
           : session
@@ -523,6 +595,7 @@ export default function App() {
             : { items: [], total: 0 };
         if (!dead) {
           setRecords(result.items);
+          setHistoryPackages(result.packages ?? []);
           setHistoryLoadedKey(historyScrollKey);
           setTotal(result.total);
           setHistoryStations(result.stations ?? []);
@@ -652,6 +725,8 @@ export default function App() {
       uploads.current.delete(key);
       pendingFiles.current.delete(key);
       await window.relay3?.cancelDownload(t.id, id);
+      // 已投递的文件包独立于连接存在；离线只中断本机正在执行的流。
+      if (t.packageId) continue;
       if (connection.status === 'connected')
         await request(
           connection.session.base,
@@ -686,11 +761,27 @@ export default function App() {
   async function send() {
     if (!session || !connected || !recipientIds[session.stationId]?.length) return;
     save('relay3-receive-buffer', bufferMinutes);
-    for (const file of files) {
-      await deliverFile(session, file, recipientIds[session.stationId], bufferMinutes);
-      setFiles((old) => old.filter((f) => f !== file));
+    if (hub?.filePackages) {
+      const result = await deliverPackage(
+        session,
+        files,
+        recipientIds[session.stationId],
+        bufferMinutes,
+      );
+      setFiles([]);
+      inform(
+        result.state === 'ready'
+          ? '文件包已生效，接收设备可独立处理'
+          : '部分文件上传失败，请在文件包中重传或移除未成功文件',
+        result.state !== 'ready',
+      );
+    } else {
+      for (const file of files) {
+        await deliverFile(session, file, recipientIds[session.stationId], bufferMinutes);
+        setFiles((old) => old.filter((f) => f !== file));
+      }
+      inform('文件已上传，旧中转站使用逐文件投递');
     }
-    inform('文件已上传到中转站，接收设备可独立处理');
     const state = await request<HubState>(session.base, session.token, '/api/state');
     multi.updateHub(session.stationId, state);
   }
@@ -972,6 +1063,39 @@ export default function App() {
               )}
             </div>
           </div>
+          {packageReminder && (
+            <div className="package-reminder" role="status">
+              <span>{packageReminder.senderName} 提醒你处理文件包</span>
+              <button
+                onClick={() => {
+                  setReminderDialog({
+                    stationId: packageReminder.stationId,
+                    packageId: packageReminder.packageId,
+                  });
+                  setPackageReminder(null);
+                }}
+              >
+                查看文件包
+              </button>
+              <button aria-label="关闭文件包提醒" onClick={() => setPackageReminder(null)}>
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {reminderDialog && multi.connections[reminderDialog.stationId] && (
+            <PackageDialog
+              id={reminderDialog.packageId}
+              session={multi.connections[reminderDialog.stationId].session}
+              connected={multi.connections[reminderDialog.stationId].status === 'connected'}
+              devices={multi.connections[reminderDialog.stationId].hub?.devices ?? []}
+              localFiles={localFiles}
+              onUpdated={() => {
+                void refreshLocalFiles();
+              }}
+              onClose={() => setReminderDialog(null)}
+              onError={(message) => inform(message, true)}
+            />
+          )}
           {notice && (
             <div
               className={`notice ${notice.error ? 'error' : ''}`}
@@ -1000,6 +1124,7 @@ export default function App() {
               connected={connection.status === 'connected'}
               visible={page === 'chat' && connection.session.stationId === multi.activeId}
               preserveView={desktop}
+              supportsPackages={connection.hub?.filePackages ?? false}
               latestId={connection.hub?.chatLatestId ?? 0}
               onDisconnect={() => disconnect(connection.session.stationId)}
               onCopy={copy}
@@ -1058,166 +1183,190 @@ export default function App() {
                     tabIndex={0}
                     aria-label="当前传输列表"
                   >
+                    {session && hub?.filePackages && (
+                      <PackageList
+                        session={session}
+                        connected={connected}
+                        localFiles={localFiles}
+                        devices={hub.devices}
+                        management={boot ? management : undefined}
+                        onError={(message) => inform(message, true)}
+                        onUpdated={() => {
+                          void refreshLocalFiles();
+                          if (session)
+                            void request<HubState>(session.base, session.token, '/api/state').then(
+                              (next) => multi.updateHub(session.stationId, next),
+                            );
+                        }}
+                      />
+                    )}
                     {transfers.length ? (
-                      transfers.map((t) => {
-                        const incoming = t.recipientId === session?.id;
-                        const amount =
-                          t.status === 'uploading'
-                            ? Math.max(t.uploaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
-                            : t.status === 'downloading'
-                              ? Math.max(
-                                  t.downloaded,
-                                  progress[`${session?.stationId}:${t.id}`] ?? 0,
-                                )
-                              : t.uploaded;
-                        const percent = t.size
-                          ? Math.min(100, Math.round((amount / t.size) * 100))
-                          : t.status === 'pending'
-                            ? 0
-                            : 100;
-                        return (
-                          <article className="transfer-row" key={t.id} data-scroll-id={t.id}>
-                            <div className={`direction ${incoming ? 'incoming' : ''}`}>
-                              {incoming ? <ArrowDownLeft size={23} /> : <ArrowUpRight size={23} />}
-                            </div>
-                            <div className="transfer-details">
-                              <strong>
-                                <TransferName
-                                  t={t}
-                                  session={
-                                    Object.values(multi.connections).find(
-                                      (c) => c.session.stationId === t.stationId,
-                                    )?.session
-                                  }
-                                />
-                              </strong>
-                              <p>
-                                {sizes(t.size)} ·{' '}
-                                <span className="device-name-tag">
-                                  {t.senderName}
-                                  <DeviceTag
-                                    platform={
-                                      t.senderPlatform ??
-                                      hub?.devices.find((d) => d.id === t.senderId)?.platform
+                      transfers
+                        .filter((t) => !t.packageId)
+                        .map((t) => {
+                          const incoming = t.recipientId === session?.id;
+                          const amount =
+                            t.status === 'uploading'
+                              ? Math.max(t.uploaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
+                              : t.status === 'downloading'
+                                ? Math.max(
+                                    t.downloaded,
+                                    progress[`${session?.stationId}:${t.id}`] ?? 0,
+                                  )
+                                : t.uploaded;
+                          const percent = t.size
+                            ? Math.min(100, Math.round((amount / t.size) * 100))
+                            : t.status === 'pending'
+                              ? 0
+                              : 100;
+                          return (
+                            <article className="transfer-row" key={t.id} data-scroll-id={t.id}>
+                              <div className={`direction ${incoming ? 'incoming' : ''}`}>
+                                {incoming ? (
+                                  <ArrowDownLeft size={23} />
+                                ) : (
+                                  <ArrowUpRight size={23} />
+                                )}
+                              </div>
+                              <div className="transfer-details">
+                                <strong>
+                                  <TransferName
+                                    t={t}
+                                    session={
+                                      Object.values(multi.connections).find(
+                                        (c) => c.session.stationId === t.stationId,
+                                      )?.session
                                     }
                                   />
-                                </span>{' '}
-                                →{' '}
-                                <span className="device-name-tag">
-                                  {t.recipientName}
-                                  <DeviceTag
-                                    platform={
-                                      t.recipientPlatform ??
-                                      hub?.devices.find((d) => d.id === t.recipientId)?.platform
-                                    }
+                                </strong>
+                                <p>
+                                  {sizes(t.size)} ·{' '}
+                                  <span className="device-name-tag">
+                                    {t.senderName}
+                                    <DeviceTag
+                                      platform={
+                                        t.senderPlatform ??
+                                        hub?.devices.find((d) => d.id === t.senderId)?.platform
+                                      }
+                                    />
+                                  </span>{' '}
+                                  →{' '}
+                                  <span className="device-name-tag">
+                                    {t.recipientName}
+                                    <DeviceTag
+                                      platform={
+                                        t.recipientPlatform ??
+                                        hub?.devices.find((d) => d.id === t.recipientId)?.platform
+                                      }
+                                    />
+                                  </span>
+                                </p>
+                                {['uploading', 'downloading'].includes(t.status) && (
+                                  <>
+                                    <progress
+                                      value={percent}
+                                      max="100"
+                                      aria-label={`${t.name} 传输进度`}
+                                    />
+                                    <small>
+                                      {percent}% · {sizes(amount)} / {sizes(t.size)}
+                                    </small>
+                                  </>
+                                )}
+                                {t.error && <small className="error-text">{t.error}</small>}
+                                {savedPaths[`${session?.stationId}:${t.id}`] && (
+                                  <small>{savedPaths[`${session?.stationId}:${t.id}`]}</small>
+                                )}
+                              </div>
+                              <div className="transfer-actions">
+                                {t.fileId ? (
+                                  <FileTask
+                                    t={t}
+                                    session={session ?? undefined}
+                                    localFiles={localFiles}
+                                    onUpdated={() => {
+                                      void refreshLocalFiles();
+                                      if (session)
+                                        void request<HubState>(
+                                          session.base,
+                                          session.token,
+                                          '/api/state',
+                                        ).then((next) => multi.updateHub(session.stationId, next));
+                                    }}
+                                    onError={(message) => inform(message, true)}
                                   />
-                                </span>
-                              </p>
-                              {['uploading', 'downloading'].includes(t.status) && (
-                                <>
-                                  <progress
-                                    value={percent}
-                                    max="100"
-                                    aria-label={`${t.name} 传输进度`}
-                                  />
-                                  <small>
-                                    {percent}% · {sizes(amount)} / {sizes(t.size)}
-                                  </small>
-                                </>
-                              )}
-                              {t.error && <small className="error-text">{t.error}</small>}
-                              {savedPaths[`${session?.stationId}:${t.id}`] && (
-                                <small>{savedPaths[`${session?.stationId}:${t.id}`]}</small>
-                              )}
-                            </div>
-                            <div className="transfer-actions">
-                              {t.fileId ? (
-                                <FileTask
-                                  t={t}
-                                  session={session ?? undefined}
-                                  localFiles={localFiles}
-                                  onUpdated={() => {
-                                    void refreshLocalFiles();
-                                    if (session)
-                                      void request<HubState>(
-                                        session.base,
-                                        session.token,
-                                        '/api/state',
-                                      ).then((next) => multi.updateHub(session.stationId, next));
-                                  }}
-                                  onError={(message) => inform(message, true)}
-                                />
-                              ) : (
-                                <>
-                                  <div className="transfer-state">
-                                    <Badge status={t.status} />
-                                  </div>
-                                  {incoming && t.status === 'pending' && (
-                                    <>
+                                ) : (
+                                  <>
+                                    <div className="transfer-state">
+                                      <Badge status={t.status} />
+                                    </div>
+                                    {incoming && t.status === 'pending' && (
+                                      <>
+                                        <Button
+                                          kind="primary"
+                                          disabled={busy}
+                                          onClick={() => void run(() => action(t, 'accept'))}
+                                        >
+                                          <Check size={16} />
+                                          接收
+                                        </Button>
+                                        <Button
+                                          disabled={busy}
+                                          onClick={() => void run(() => action(t, 'reject'))}
+                                        >
+                                          拒绝
+                                        </Button>
+                                      </>
+                                    )}
+                                    {incoming &&
+                                      ['ready', 'awaiting-confirm'].includes(t.status) && (
+                                        <Button
+                                          kind="primary"
+                                          disabled={
+                                            busy ||
+                                            receivingKeys.includes(`${session?.stationId}:${t.id}`)
+                                          }
+                                          onClick={() =>
+                                            void receive(t).catch((error) => {
+                                              reportException('download.failed', error, {
+                                                stationId: session?.stationId,
+                                                base: session?.base,
+                                              });
+                                              inform(error.message, true);
+                                            })
+                                          }
+                                        >
+                                          <Download size={16} />
+                                          {t.status === 'ready' ? '下载文件' : '重新下载'}
+                                        </Button>
+                                      )}
+                                    {incoming && t.status === 'awaiting-confirm' && (
                                       <Button
-                                        kind="primary"
                                         disabled={busy}
-                                        onClick={() => void run(() => action(t, 'accept'))}
+                                        onClick={() => void run(() => action(t, 'complete'))}
                                       >
                                         <Check size={16} />
-                                        接收
+                                        确认收到
                                       </Button>
-                                      <Button
-                                        disabled={busy}
-                                        onClick={() => void run(() => action(t, 'reject'))}
-                                      >
-                                        拒绝
-                                      </Button>
-                                    </>
-                                  )}
-                                  {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
+                                    )}
                                     <Button
-                                      kind="primary"
-                                      disabled={
-                                        busy ||
-                                        receivingKeys.includes(`${session?.stationId}:${t.id}`)
-                                      }
-                                      onClick={() =>
-                                        void receive(t).catch((error) => {
-                                          reportException('download.failed', error, {
-                                            stationId: session?.stationId,
-                                            base: session?.base,
-                                          });
-                                          inform(error.message, true);
-                                        })
-                                      }
+                                      disabled={busy && t.status !== 'downloading'}
+                                      title="取消传输"
+                                      onClick={() => void run(() => action(t, 'cancel'))}
                                     >
-                                      <Download size={16} />
-                                      {t.status === 'ready' ? '下载文件' : '重新下载'}
+                                      <X size={16} />
                                     </Button>
-                                  )}
-                                  {incoming && t.status === 'awaiting-confirm' && (
-                                    <Button
-                                      disabled={busy}
-                                      onClick={() => void run(() => action(t, 'complete'))}
-                                    >
-                                      <Check size={16} />
-                                      确认收到
-                                    </Button>
-                                  )}
-                                  <Button
-                                    disabled={busy && t.status !== 'downloading'}
-                                    title="取消传输"
-                                    onClick={() => void run(() => action(t, 'cancel'))}
-                                  >
-                                    <X size={16} />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })
-                    ) : (
+                                  </>
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })
+                    ) : !hub?.filePackages ? (
                       <Empty icon={<ArrowLeftRight size={28} />} title="还没有进行中的传输">
                         {session ? '选择文件发送，或等待接收。' : '连接中转站后即可收发文件。'}
                       </Empty>
-                    )}
+                    ) : null}
                   </ScrollArea>
                 </section>{' '}
                 {session && (
@@ -1642,85 +1791,118 @@ export default function App() {
                 tabIndex={0}
                 aria-label="收发记录列表"
               >
-                {historyRows.length ? (
+                {historyRows.length || historyPackages.length ? (
                   <div className="record-table">
-                    <div className="record-header">
+                    <div className="record-header" hidden={historyPackages.length > 0}>
                       <span>文件 / 大小</span>
                       <span>发送 → 接收</span>
                       <span>时间 / 耗时</span>
                       <span>状态</span>
                     </div>
-                    {historyRows.map((t) => (
-                      <div
-                        className="record-row"
-                        key={`${t.stationId}:${t.id}`}
-                        data-scroll-id={`${t.stationId}:${t.id}`}
-                      >
-                        <div>
-                          <strong>
-                            <TransferName
+                    {historyPackages.map((p) => (
+                      <FilePackageCard
+                        key={`${p.stationId}:${p.id}`}
+                        p={p}
+                        session={
+                          Object.values(multi.connections).find(
+                            (c) => c.session.stationId === p.stationId,
+                          )?.session
+                        }
+                        readOnly={
+                          Object.values(multi.connections).find(
+                            (c) => c.session.stationId === p.stationId,
+                          )?.status !== 'connected'
+                        }
+                        localFiles={localFiles}
+                        devices={
+                          Object.values(multi.connections).find(
+                            (c) => c.session.stationId === p.stationId,
+                          )?.hub?.devices ?? []
+                        }
+                        onUpdated={() => {
+                          void refreshLocalFiles();
+                        }}
+                        onError={(message) => inform(message, true)}
+                      />
+                    ))}
+                    {historyRows
+                      .filter(
+                        (t) =>
+                          !historyPackages.some(
+                            (p) => p.id === t.packageId && p.stationId === t.stationId,
+                          ),
+                      )
+                      .map((t) => (
+                        <div
+                          className="record-row"
+                          key={`${t.stationId}:${t.id}`}
+                          data-scroll-id={`${t.stationId}:${t.id}`}
+                        >
+                          <div>
+                            <strong>
+                              <TransferName
+                                t={t}
+                                session={
+                                  Object.values(multi.connections).find(
+                                    (c) => c.session.stationId === t.stationId,
+                                  )?.session
+                                }
+                              />
+                            </strong>
+                            <small>{sizes(t.size)}</small>
+                            {desktop && (
+                              <small className="record-station">
+                                <Radio size={12} />
+                                {t.stationName || '其他'}
+                              </small>
+                            )}
+                          </div>
+                          <div>
+                            <span className="device-name-tag">
+                              {t.senderName}
+                              <DeviceTag
+                                platform={
+                                  t.senderPlatform ??
+                                  admin?.devices.find((d) => d.id === t.senderId)?.platform
+                                }
+                              />
+                            </span>
+                            <ArrowUpRight size={13} />
+                            <span className="device-name-tag">
+                              {t.recipientName}
+                              <DeviceTag
+                                platform={
+                                  t.recipientPlatform ??
+                                  admin?.devices.find((d) => d.id === t.recipientId)?.platform
+                                }
+                              />
+                            </span>
+                          </div>
+                          <div>
+                            <span>{date(t.createdAt)}</span>
+                            <small>耗时 {duration(t.duration)}</small>
+                          </div>
+                          <div>
+                            <FileTask
                               t={t}
                               session={
                                 Object.values(multi.connections).find(
                                   (c) => c.session.stationId === t.stationId,
                                 )?.session
                               }
+                              localFiles={localFiles}
+                              compact
+                              onUpdated={() => {
+                                void refreshLocalFiles();
+                                setOffset((old) => old);
+                              }}
+                              onError={(message) => inform(message, true)}
                             />
-                          </strong>
-                          <small>{sizes(t.size)}</small>
-                          {desktop && (
-                            <small className="record-station">
-                              <Radio size={12} />
-                              {t.stationName || '其他'}
-                            </small>
-                          )}
+                            {t.cleanedAt && <small>缓存已清理</small>}
+                            {t.error && <small className="error-text">{t.error}</small>}
+                          </div>
                         </div>
-                        <div>
-                          <span className="device-name-tag">
-                            {t.senderName}
-                            <DeviceTag
-                              platform={
-                                t.senderPlatform ??
-                                admin?.devices.find((d) => d.id === t.senderId)?.platform
-                              }
-                            />
-                          </span>
-                          <ArrowUpRight size={13} />
-                          <span className="device-name-tag">
-                            {t.recipientName}
-                            <DeviceTag
-                              platform={
-                                t.recipientPlatform ??
-                                admin?.devices.find((d) => d.id === t.recipientId)?.platform
-                              }
-                            />
-                          </span>
-                        </div>
-                        <div>
-                          <span>{date(t.createdAt)}</span>
-                          <small>耗时 {duration(t.duration)}</small>
-                        </div>
-                        <div>
-                          <FileTask
-                            t={t}
-                            session={
-                              Object.values(multi.connections).find(
-                                (c) => c.session.stationId === t.stationId,
-                              )?.session
-                            }
-                            localFiles={localFiles}
-                            compact
-                            onUpdated={() => {
-                              void refreshLocalFiles();
-                              setOffset((old) => old);
-                            }}
-                            onError={(message) => inform(message, true)}
-                          />
-                          {t.cleanedAt && <small>缓存已清理</small>}
-                          {t.error && <small className="error-text">{t.error}</small>}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 ) : (
                   <Empty
@@ -1843,67 +2025,90 @@ export default function App() {
                           tabIndex={0}
                           aria-label="中转缓存列表"
                         >
-                          {cache.entries.map((e) => (
-                            <label
-                              className="cache-row"
-                              key={e.folder + e.id}
-                              data-scroll-id={e.folder + e.id}
-                            >
-                              <input
-                                type="checkbox"
-                                disabled={e.busy}
-                                checked={selected.includes(e.id)}
-                                onChange={(ev) =>
-                                  setSelected(
-                                    ev.target.checked
-                                      ? [...selected, e.id]
-                                      : selected.filter((id) => id !== e.id),
-                                  )
+                          {[...new Set(cache.entries.map((e) => e.packageId).filter(Boolean))].map(
+                            (id) => (
+                              <PackageCache
+                                key={id}
+                                id={id!}
+                                entries={cache.entries.filter((e) => e.packageId === id)}
+                                selected={selected}
+                                setSelected={setSelected}
+                                management={management}
+                                session={
+                                  Object.values(multi.connections).find(
+                                    (c) => c.session.stationId === admin.settings.stationId,
+                                  )?.session
                                 }
+                                onUpdated={() => {
+                                  void management('/cache').then(setCache);
+                                }}
+                                onError={(message) => inform(message, true)}
                               />
-                              <File size={20} />
-                              <div>
-                                <div className="file-summary-heading">
-                                  <strong>
-                                    <TransferName
-                                      t={{
-                                        name: e.name,
-                                        fileId: e.id,
-                                        chatMessageId: e.chatMessageId,
-                                        stationId: admin.settings.stationId,
-                                      }}
-                                      session={
-                                        Object.values(multi.connections).find(
-                                          (c) => c.session.stationId === admin.settings.stationId,
-                                        )?.session
-                                      }
-                                    />
-                                  </strong>
-                                  <Badge status={e.status} />
-                                </div>
-                                <small>
-                                  {sizes(e.bytes)} ·{' '}
-                                  {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
-                                  <br />
-                                  {e.expiresAt
-                                    ? `自动清理：${date(e.expiresAt)}`
-                                    : '尚未进入自动清理计时'}
-                                </small>
-                              </div>
-                              <div className="file-task-actions">
-                                <Button
-                                  title="打开中转缓存所在目录"
-                                  onClick={() =>
-                                    void run(() =>
-                                      window.relay3!.revealFile({ kind: 'cache', id: e.id }),
+                            ),
+                          )}
+                          {cache.entries
+                            .filter((e) => !e.packageId)
+                            .map((e) => (
+                              <label
+                                className="cache-row"
+                                key={e.folder + e.id}
+                                data-scroll-id={e.folder + e.id}
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={e.busy}
+                                  checked={selected.includes(e.id)}
+                                  onChange={(ev) =>
+                                    setSelected(
+                                      ev.target.checked
+                                        ? [...selected, e.id]
+                                        : selected.filter((id) => id !== e.id),
                                     )
                                   }
-                                >
-                                  <FolderOpen size={16} />
-                                </Button>
-                              </div>
-                            </label>
-                          ))}
+                                />
+                                <File size={20} />
+                                <div>
+                                  <div className="file-summary-heading">
+                                    <strong>
+                                      <TransferName
+                                        t={{
+                                          name: e.name,
+                                          fileId: e.id,
+                                          chatMessageId: e.chatMessageId,
+                                          stationId: admin.settings.stationId,
+                                        }}
+                                        session={
+                                          Object.values(multi.connections).find(
+                                            (c) => c.session.stationId === admin.settings.stationId,
+                                          )?.session
+                                        }
+                                      />
+                                    </strong>
+                                    <Badge status={e.status} />
+                                  </div>
+                                  <small>
+                                    {sizes(e.bytes)} ·{' '}
+                                    {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
+                                    <br />
+                                    {e.expiresAt
+                                      ? `自动清理：${date(e.expiresAt)}`
+                                      : '尚未进入自动清理计时'}
+                                  </small>
+                                </div>
+                                <div className="file-task-actions">
+                                  <Button
+                                    title="打开中转缓存所在目录"
+                                    onClick={() =>
+                                      void run(() =>
+                                        window.relay3!.revealFile({ kind: 'cache', id: e.id }),
+                                      )
+                                    }
+                                  >
+                                    <FolderOpen size={16} />
+                                  </Button>
+                                </div>
+                              </label>
+                            ))}
                         </ScrollArea>
                       </>
                     ) : (
@@ -2609,8 +2814,9 @@ export default function App() {
                       } else {
                         const r = await management('/records/clear', {});
                         inform(`已清理 ${r.deleted} 条记录`);
-                        const result = await management('/records');
+                        const result = await management('/records?groupPackages=1');
                         setRecords(result.items);
+                        setHistoryPackages(result.packages ?? []);
                         setTotal(result.total);
                         setHistoryStations(result.stations ?? []);
                         setOffset(0);

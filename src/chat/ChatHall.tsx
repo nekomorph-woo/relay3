@@ -3,6 +3,9 @@ import { EmojiText } from '../emoji/EmojiText';
 import { FileTask, UnknownFile, type LocalFile } from '../components/FileTask';
 import { Recipients, ReceiveBuffer } from '../components/Recipients';
 import { deliverFile } from '../fileDelivery';
+import { deliverPackage } from '../packageDelivery';
+import { PackageDialog } from '../components/PackageDialog';
+import { FileBox } from 'lucide-react';
 import { FileUp, File } from 'lucide-react';
 import type { Transfer } from '../api';
 import type { SharedFile } from '../../server/files';
@@ -57,6 +60,7 @@ export function ChatHall({
   onRead,
   management,
   preserveView = false,
+  supportsPackages = false,
 }: {
   localFiles?: LocalFile[];
   onFilesChanged: () => void;
@@ -70,6 +74,7 @@ export function ChatHall({
   onRead: () => void;
   management?: (url: string, body?: unknown) => Promise<any>;
   preserveView?: boolean;
+  supportsPackages?: boolean;
 }) {
   const [identity, setIdentity] = useState<ChatIdentity | null>(null),
     [info, setInfo] = useState<Info | null>(null);
@@ -78,6 +83,7 @@ export function ChatHall({
   const [plainText, setPlainText] = useState('');
   const [text, setText] = useState(''),
     [mode, setMode] = useState<'plain' | 'encrypted'>('plain');
+  const [openedPackage, setOpenedPackage] = useState<string | null>(null);
   const [fileComposer, setFileComposer] = useState(false),
     [chatFiles, setChatFiles] = useState<File[]>([]),
     [fileRecipients, setFileRecipients] = useState<string[]>([]),
@@ -128,11 +134,15 @@ export function ChatHall({
             senderId: m.senderId,
             remark: m.remark,
             remarkStyle: m.remarkStyle,
-            ...(m.kind === 'file' ? { purpose: 'file-name' as const, fileId: m.fileId! } : {}),
+            ...(m.kind === 'file'
+              ? { purpose: 'file-name' as const, fileId: m.fileId! }
+              : m.kind === 'package'
+                ? { purpose: 'file-package' as const, fileId: m.packageId! }
+                : {}),
           })
         : null;
     if (content !== null) return { text: content, open: true };
-    if (m.kind === 'file') return { text: '未知文件', open: false };
+    if (m.kind === 'file' || m.kind === 'package') return { text: '未知文件', open: false };
     if (!phrases.current.has(m.id)) phrases.current.set(m.id, hiddenPhrase());
     return { text: phrases.current.get(m.id)!, open: false };
   }
@@ -167,29 +177,39 @@ export function ChatHall({
         return { id, publicKey: d.publicKey };
       });
       save('relay3-receive-buffer', fileBuffer);
-      for (const file of chatFiles) {
-        const id = fileDraftIds.current.get(file) ?? uuid();
-        fileDraftIds.current.set(file, id);
-        const envelope = encryptMessage(
-          file.name,
-          recipients,
-          {
-            stationId: session.stationId,
-            senderId: session.id,
-            remark,
-            remarkStyle,
-            purpose: 'file-name',
-            fileId: id,
-          },
-          id,
-        );
-        await deliverFile(session, file, fileRecipients, fileBuffer, {
-          id,
-          envelope,
+      if (supportsPackages) {
+        const result = await deliverPackage(session, chatFiles, fileRecipients, fileBuffer, {
+          keys: recipients,
           remark,
           remarkStyle,
         });
-        setChatFiles((old) => old.filter((f) => f !== file));
+        setChatFiles([]);
+        if (result.state !== 'ready') setOpenedPackage(result.id);
+      } else {
+        for (const file of chatFiles) {
+          const id = fileDraftIds.current.get(file) ?? uuid();
+          fileDraftIds.current.set(file, id);
+          const envelope = encryptMessage(
+            file.name,
+            recipients,
+            {
+              stationId: session.stationId,
+              senderId: session.id,
+              remark,
+              remarkStyle,
+              purpose: 'file-name',
+              fileId: id,
+            },
+            id,
+          );
+          await deliverFile(session, file, fileRecipients, fileBuffer, {
+            id,
+            envelope,
+            remark,
+            remarkStyle,
+          });
+          setChatFiles((old) => old.filter((f) => f !== file));
+        }
       }
       const nextRecent = { ...recent };
       for (const id of fileRecipients) nextRecent[id] = Date.now();
@@ -663,7 +683,20 @@ export function ChatHall({
               </button>
             </aside>
           )}
-          {m.kind === 'file' ? (
+          {m.kind === 'package' ? (
+            <button
+              className="chat-package-button"
+              type="button"
+              onClick={() => {
+                if (value.open && m.packageId) setOpenedPackage(m.packageId);
+              }}
+              disabled={!value.open}
+              aria-label={value.open ? '打开文件包' : '未知文件包'}
+            >
+              <FileBox size={24} />
+              <span>{value.open ? '文件包 · 点击查看' : '未知文件包'}</span>
+            </button>
+          ) : m.kind === 'file' ? (
             <div className="chat-file-message">
               {value.open ? (
                 <>
@@ -826,6 +859,18 @@ export function ChatHall({
         </section>
         <aside className="chat-info chat-info-desktop">{renderInfo()}</aside>
       </div>
+      {openedPackage && visible && (
+        <PackageDialog
+          id={openedPackage}
+          session={session}
+          connected={connected}
+          devices={info?.devices ?? []}
+          localFiles={localFiles}
+          onUpdated={onFilesChanged}
+          onClose={() => setOpenedPackage(null)}
+          onError={setError}
+        />
+      )}
       {fileComposer && visible && (
         <ChatDialog
           label="发送文件"
