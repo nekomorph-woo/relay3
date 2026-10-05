@@ -1,3 +1,4 @@
+import { Tooltip } from './components/Tooltip';
 import { ScrollArea } from './components/ScrollArea';
 import { version as appVersion } from '../package.json';
 import { reportException } from './diagnostics';
@@ -1635,10 +1636,6 @@ export default function App() {
                   </section>
                 )}
               </div>
-              <Button onClick={() => setModal('storageLocations')}>
-                <FolderOpen size={16} />
-                {page === 'cache' ? '缓存位置与数据库整理' : '接收文件位置'}
-              </Button>
               <div className="storage-files">
                 {page === 'cache' && (
                   <section className="panel">
@@ -1649,14 +1646,20 @@ export default function App() {
                           完成后 {admin.settings.retentionHours} 小时清理缓存
                         </p>
                       </div>
-                      <Button
-                        kind="danger"
-                        disabled={!selected.length || busy}
-                        onClick={() => setModal('clearCache')}
-                      >
-                        <Trash2 size={16} />
-                        清理所选{selected.length ? ` (${selected.length})` : ''}
-                      </Button>
+                      <div className="actions storage-toolbar-actions">
+                        <Button onClick={() => setModal('storageLocations')}>
+                          <FolderOpen size={16} />
+                          缓存位置与数据库整理
+                        </Button>
+                        <Button
+                          kind="danger"
+                          disabled={!selected.length || busy}
+                          onClick={() => setModal('clearCache')}
+                        >
+                          <Trash2 size={16} />
+                          清理所选{selected.length ? ` (${selected.length})` : ''}
+                        </Button>
+                      </div>
                     </div>
                     {cache?.entries.length ? (
                       <>
@@ -1734,14 +1737,20 @@ export default function App() {
                         <h2>客户端下载的文件</h2>
                         <p className="subtle">正式文件，不会自动清理。</p>
                       </div>
-                      <Button
-                        kind="danger"
-                        disabled={!receivedSelected.length || busy}
-                        onClick={() => setModal('clearReceived')}
-                      >
-                        <Trash2 size={16} />
-                        删除所选文件
-                      </Button>
+                      <div className="actions storage-toolbar-actions">
+                        <Button onClick={() => setModal('storageLocations')}>
+                          <FolderOpen size={16} />
+                          接收文件位置
+                        </Button>
+                        <Button
+                          kind="danger"
+                          disabled={!receivedSelected.length || busy}
+                          onClick={() => setModal('clearReceived')}
+                        >
+                          <Trash2 size={16} />
+                          删除所选文件
+                        </Button>
+                      </div>
                     </div>
                     <select
                       aria-label="按中转站筛选已接收文件"
@@ -1805,8 +1814,17 @@ export default function App() {
                                 <strong>{f.name}</strong>
                                 <small>
                                   {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
-                                  <br />
-                                  {f.path}
+                                  <Tooltip
+                                    text={f.path}
+                                    aria-label={f.path}
+                                    className="received-path"
+                                  >
+                                    <span>
+                                      {f.path.length > 100
+                                        ? `${f.path.slice(0, 32)}…${f.path.slice(-64)}`
+                                        : f.path}
+                                    </span>
+                                  </Tooltip>
                                 </small>
                               </div>
                               <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>

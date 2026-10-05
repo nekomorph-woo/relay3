@@ -478,7 +478,7 @@ export function ChatHall({
           </p>
           <small>文字历史保存在中转站</small>
         </section>
-        <section className="panel">
+        <section className="panel chat-devices-panel">
           <div className="section-head">
             <h2>连接设备</h2>
             <button
@@ -490,35 +490,42 @@ export function ChatHall({
             </button>
           </div>
           <small>每 30 秒刷新</small>
-          {[true, false].map((online) => (
-            <div className="chat-device-group" key={String(online)}>
-              <h3>
-                {online ? '在线' : '离线'} · {devices.filter((d) => d.online === online).length}
-              </h3>
-              {devices
-                .filter((d) => d.online === online)
-                .map((d) => (
-                  <div className="chat-device" key={d.id} data-scroll-id={d.id}>
-                    <DeviceAvatar
-                      id={d.id}
-                      name={d.name}
-                      size={28}
-                      className="chat-device-avatar"
-                    />
-                    <div>
-                      <strong>
-                        {d.name}
-                        <DeviceTag platform={d.platform} />
-                      </strong>
-                      <small>
-                        {d.platform}
-                        {d.publicKey ? ' · 已登记公钥' : ' · 暂无公钥'}
-                      </small>
+          <ScrollArea
+            memoryKey={`chat-devices:${session.stationId}`}
+            className="chat-devices-list"
+            tabIndex={0}
+            aria-label="大厅设备信息"
+          >
+            {[true, false].map((online) => (
+              <div className="chat-device-group" key={String(online)}>
+                <h3>
+                  {online ? '在线' : '离线'} · {devices.filter((d) => d.online === online).length}
+                </h3>
+                {devices
+                  .filter((d) => d.online === online)
+                  .map((d) => (
+                    <div className="chat-device" key={d.id} data-scroll-id={d.id}>
+                      <DeviceAvatar
+                        id={d.id}
+                        name={d.name}
+                        size={28}
+                        className="chat-device-avatar"
+                      />
+                      <div>
+                        <strong>
+                          {d.name}
+                          <DeviceTag platform={d.platform} />
+                        </strong>
+                        <small>
+                          {d.platform}
+                          {d.publicKey ? ' · 已登记公钥' : ' · 暂无公钥'}
+                        </small>
+                      </div>
                     </div>
-                  </div>
-                ))}
-            </div>
-          ))}
+                  ))}
+              </div>
+            ))}
+          </ScrollArea>
         </section>
       </>
     );
@@ -700,15 +707,7 @@ export function ChatHall({
           </div>
           {renderComposer(false)}
         </section>
-        <ScrollArea
-          as="aside"
-          memoryKey={`chat-devices:${session.stationId}`}
-          className="chat-info chat-info-desktop"
-          tabIndex={0}
-          aria-label="大厅设备信息"
-        >
-          {renderInfo()}
-        </ScrollArea>
+        <aside className="chat-info chat-info-desktop">{renderInfo()}</aside>
       </div>
       {mode === 'encrypted' && visible && (
         <ChatDialog

@@ -135,6 +135,9 @@ test.afterAll(async () => {
 test('长列表固定操作，切页恢复位置，刷新与筛选定位正确', async () => {
   await page.setViewportSize({ width: 1404, height: 942 });
   await tab('连接设备');
+  const deviceList = await page.locator('.device-list').boundingBox();
+  const remove = await page.locator('.device-record-actions .button').first().boundingBox();
+  expect(deviceList!.x + deviceList!.width - remove!.x - remove!.width).toBeGreaterThanOrEqual(12);
   await fixedWhileScrolling('.device-list', '.devices-layout > .panel:first-child .section-head');
   await scroll('.timeline', 420);
   await tab('设备');
@@ -159,6 +162,16 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   );
   await tab('接收文件');
   await expect(page.locator('.cache-row:not(.received-row)')).toHaveCount(0);
+  const row = page.locator('.received-row').first();
+  const content = await row.locator('div').boundingBox();
+  const badge = await row.locator('.badge').boundingBox();
+  expect(badge!.x).toBeGreaterThan(content!.x + content!.width);
+  const directory = page.getByRole('button', { name: '接收文件位置', exact: true });
+  await expect(page.locator('.received-panel .section-head')).toContainText('接收文件位置');
+  await expect(directory).toBeVisible();
+  await row.locator('.received-path').hover();
+  await expect(page.getByRole('tooltip')).toContainText('/received/');
+  await page.mouse.move(400, 80);
   await scroll('.storage-list[data-scroll-key^="received:"]', 460);
   await tab('设备');
   await tab('中转缓存');
@@ -201,15 +214,23 @@ test('小窗口发送与保存固定，路径弹窗正文滚动、Esc返回焦�
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('设置已保存');
   const toast = await page.locator('.notice').boundingBox();
-  const save = await page.locator('.settings-actions').boundingBox();
-  expect(toast!.y + toast!.height).toBeLessThanOrEqual(save!.y);
+  const save = await page.locator('.settings-actions .button').boundingBox();
+  expect(
+    toast!.x + toast!.width <= save!.x ||
+      toast!.x >= save!.x + save!.width ||
+      toast!.y >= save!.y + save!.height ||
+      toast!.y + toast!.height <= save!.y,
+  ).toBeTruthy();
   await page.screenshot({ path: 'test-results/scroll-small-settings.png' });
   await tab('中转缓存');
   const trigger = page.getByRole('button', { name: '缓存位置与数据库整理', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '缓存位置与数据库整理' });
   const header = await dialog.locator('.dialog-head').boundingBox();
-  await scroll('.dialog-body', 20);
+  const overflow = await dialog
+    .locator('.dialog-body')
+    .evaluate((node) => node.scrollHeight - node.clientHeight);
+  if (overflow > 1) await scroll('.dialog-body', Math.min(20, overflow - 1));
   expect((await dialog.locator('.dialog-head').boundingBox())!.y).toBeCloseTo(header!.y, 0);
   await dialog.getByRole('button', { name: '复制中转文件位置', exact: true }).click();
   await page.keyboard.press('Escape');
@@ -237,6 +258,10 @@ test('群聊历史不抢位置、密文分页回顶、清理长正文和下拉�
   }
   await tab('群聊大厅');
   await expect(page.getByLabel('文字消息', { exact: true })).toBeVisible();
+  const stationInfo = page.locator('.chat-info-desktop > .panel').first();
+  const infoBefore = await stationInfo.boundingBox();
+  await scroll('.chat-info-desktop .chat-devices-list', 280);
+  expect((await stationInfo.boundingBox())!.y).toBeCloseTo(infoBefore!.y, 0);
   for (let i = 0; i < 65; i++)
     await chat('/messages', {
       clientId: crypto.randomUUID(),

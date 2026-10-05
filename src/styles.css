@@ -3730,3 +3730,237 @@ main.native-page {
     padding-top: 6px;
   }
 }
+
+/* 界面细节审阅：内容给原生滚动条让出空间，固定操作不贴边。 */
+.device-list,
+.transfer-screen .selected-files,
+.transfer-items,
+.settings-body,
+.connected-stations {
+  padding-right: 24px;
+  scrollbar-gutter: stable;
+}
+.device-list,
+.transfer-screen .selected-files,
+.transfer-items,
+.settings-body {
+  padding-bottom: 8px;
+}
+.devices-layout .device-record-actions {
+  gap: 8px;
+}
+.file-line button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.history-workspace .record-header,
+.history-workspace .record-row {
+  padding-left: 0;
+  padding-right: 12px;
+  align-items: start;
+}
+.history-workspace .records-panel {
+  scrollbar-gutter: stable;
+}
+.history-workspace .record-row > div:nth-child(2) {
+  align-content: start;
+}
+.received-path {
+  display: block;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+}
+.received-path > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+.received-panel > select {
+  width: min(260px, 100%);
+  flex-shrink: 0;
+}
+.storage-list {
+  scrollbar-gutter: stable;
+  padding-right: 12px;
+  padding-bottom: 8px;
+}
+.chat-info-desktop {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.chat-info-desktop > .panel:first-child {
+  flex-shrink: 0;
+}
+.chat-info-desktop .chat-devices-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-devices-list {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.chat-info-desktop .chat-devices-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+  padding-bottom: 8px;
+}
+.chat-main > .chat-composer .chat-encrypt-action {
+  padding-left: 0;
+}
+.chat-main > .chat-composer .chat-compose-options .subtle {
+  margin-right: 0;
+}
+.chat-main > .chat-composer .chat-send-row {
+  padding-left: 0;
+  padding-right: 0;
+}
+/* 成功反馈保持轻量，错误信息仍使用完整提示框。 */
+.native-page > .notice:not(.error) {
+  top: 8px;
+  bottom: auto;
+  left: calc(50% + 109px);
+  right: auto;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 260px));
+  min-height: 36px;
+  padding: 6px 10px;
+  gap: 8px;
+  font-size: var(--text-xs);
+  box-shadow: 0 2px 8px var(--color-overlay);
+}
+.native-page > .notice:not(.error) button {
+  width: 24px;
+  height: 24px;
+}
+/* 主弹窗与群聊弹窗使用相同的操作尺寸。 */
+.dialog-footer button,
+.chat-modal-footer button,
+.chat-clean-controls button:not(.device-select-trigger) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: var(--text-sm);
+}
+.dialog-footer button.primary,
+.chat-modal-footer button.primary {
+  height: 40px;
+  min-height: 40px;
+  min-width: 88px;
+}
+.app-dialog > .dialog-head > .button,
+.chat-modal > .dialog-head > button {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar > nav {
+  margin-top: 20px;
+}
+@media (min-width: 1000px) {
+  .storage-files .cache-row {
+    grid-template-columns: 20px 20px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+  }
+  .storage-files .cache-row .badge {
+    grid-column: 4;
+    grid-row: 1;
+    margin-left: 12px;
+    justify-self: end;
+  }
+}
+@media (min-width: 769px) and (max-width: 1050px) {
+  .transfer-screen.has-session {
+    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 1fr);
+  }
+  .transfer-screen .dropzone {
+    min-height: 88px;
+    margin: 12px 0;
+  }
+}
+@media (max-width: 1050px) {
+  .settings-workspace > .identity-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .settings-workspace > .identity-panel .identity-details {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .identity-code {
+    flex-wrap: wrap;
+  }
+  .native-page > .notice:not(.error) {
+    top: auto;
+    bottom: 6px;
+  }
+}
+@media (min-width: 761px) and (max-height: 700px) {
+  .sidebar:has(.station-switcher) nav {
+    margin-top: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar > nav {
+    margin-top: 0;
+  }
+  .native-page > .notice:not(.error) {
+    top: 8px;
+    bottom: auto;
+    left: 50%;
+    max-width: calc(100vw - 24px);
+  }
+}
+@media (max-width: 600px) {
+  .received-panel > select {
+    width: 100%;
+  }
+  .transfer-items,
+  .transfer-screen .selected-files {
+    scrollbar-gutter: auto;
+    padding-right: 0;
+  }
+}
+.file-line button,
+.native-page > .notice:not(.error) button {
+  min-width: 0;
+}
+.storage-toolbar-actions {
+  justify-content: flex-end;
+}
+.chat-clean-modal .dialog-actions > button:last-child {
+  min-height: 40px;
+  min-width: 88px;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .native-page > .notice:not(.error) {
+    left: calc(50% + 95px);
+  }
+}
+@media (max-width: 1150px) {
+  .chat-info-desktop {
+    display: none;
+  }
+}
