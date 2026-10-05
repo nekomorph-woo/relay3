@@ -2046,7 +2046,7 @@ main.chat-workspace {
   margin-left: auto;
   font-size: var(--text-xs);
 }
-.chat-compose-options .chat-encrypt-action {
+.chat-compose-options > button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
