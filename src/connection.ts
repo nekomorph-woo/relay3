@@ -17,9 +17,11 @@ export function connectStation(
     attempts = 0,
     socket: WebSocket | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let handshake: ReturnType<typeof setTimeout> | undefined;
   let health: ReturnType<typeof setInterval> | undefined;
   let probe: AbortController | undefined;
   function release() {
+    clearTimeout(handshake);
     clearInterval(health);
     probe?.abort();
     probe = undefined;
@@ -43,6 +45,15 @@ export function connectStation(
       session.base.replace(/^http/, 'ws') + '/api/ws?token=' + encodeURIComponent(session.token),
     );
     socket = current;
+    handshake = setTimeout(() => {
+      if (!active()) return;
+      callbacks.error(
+        new Error(
+          '实时连接握手超时，配对凭证已获得，但未收到中转站状态；请检查代理的 WebSocket 直连规则',
+        ),
+      );
+      reconnect();
+    }, 8000);
     const active = () => !stopped && socket === current;
     current.onopen = () => {
       // 只有首个合法状态到达后，才确认配对和实时连接全部成功。
@@ -72,6 +83,7 @@ export function connectStation(
           !Array.isArray(hub.devices)
         )
           throw new Error('中转站身份或状态不匹配');
+        clearTimeout(handshake);
         supportsHeartbeat = hub.connectionHeartbeat === true;
         lastReply = Date.now();
         attempts = 0;

@@ -17,6 +17,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
   const selected = useRef(activeId);
   const notify = useRef(inform);
   notify.current = inform;
+  const lastError = useRef(new Map<string, number>());
   const sockets = useRef(
     new Map<
       string,
@@ -134,11 +135,19 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
             `${session.stationName}：${code === 4001 ? '连接凭证失效，请重新配对' : code === 4002 ? '此设备已在另一窗口连接' : '管理员已断开此设备'}`,
             true,
           ),
-        error: (error) =>
+        error: (error) => {
           reportException('connection.socket-error ' + session.stationName, error, {
             stationId: id,
             base: session.base,
-          }),
+          });
+          if (!lastError.current.has(id) || Date.now() - (lastError.current.get(id) ?? 0) > 60000) {
+            lastError.current.set(id, Date.now());
+            notify.current(
+              `${session.stationName}：实时连接未完成，请检查代理的 WebSocket 直连规则，或在连接管理中检查连接。`,
+              true,
+            );
+          }
+        },
       });
       sockets.current.set(id, { signature: session.base + ':' + session.token, stop });
     }

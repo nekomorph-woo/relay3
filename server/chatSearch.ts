@@ -51,8 +51,17 @@ export class ChatSearch {
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chat_search USING fts5(content,remark,tokenize='trigram');
   CREATE TRIGGER IF NOT EXISTS chat_search_insert AFTER INSERT ON chat_messages BEGIN INSERT INTO chat_search(rowid,content,remark) VALUES(new.id,CASE WHEN new.mode='plain' AND new.kind='text' THEN new.content ELSE '' END,new.remark); END;
   CREATE TRIGGER IF NOT EXISTS chat_search_delete AFTER DELETE ON chat_messages BEGIN DELETE FROM chat_search WHERE rowid=old.id; END;`);
-    const task = tasks.start('scan', '建立历史搜索索引');
-    let cursor = 0;
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS chat_search_state (id INTEGER PRIMARY KEY,cursor INTEGER NOT NULL); INSERT OR IGNORE INTO chat_search_state VALUES(1,0)',
+    );
+    let cursor = Number(
+        (db.prepare('SELECT cursor FROM chat_search_state WHERE id=1').get() as any).cursor,
+      ),
+      processed = 0;
+    const total = Number(
+      (db.prepare('SELECT COUNT(*) n FROM chat_messages WHERE id>?').get(cursor) as any).n,
+    );
+    const task = tasks.start('scan', '建立历史搜索索引', total);
     const backfill = () => {
       if (this.closed) {
         tasks.finish(task, '索引构建已停止');
@@ -75,12 +84,14 @@ export class ChatSearch {
               );
             cursor = m.id;
           }
+          db.prepare('UPDATE chat_search_state SET cursor=? WHERE id=1').run(cursor);
           db.exec('COMMIT');
         } catch (e) {
           db.exec('ROLLBACK');
           throw e;
         }
-        tasks.progress(task, cursor);
+        processed += rows.length;
+        tasks.progress(task, processed);
         if (rows.length === 500) this.timer = setImmediate(backfill);
         else {
           this.ready = true;

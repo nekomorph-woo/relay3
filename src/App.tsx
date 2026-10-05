@@ -878,7 +878,7 @@ export default function App() {
     save('relay3-device-name', deviceName);
     setModal(null);
     history.replaceState(null, '', location.pathname);
-    inform('已连接中转站');
+    inform('已完成配对，正在建立实时连接');
   }
   async function disconnectStation(id: string) {
     const connection = multi.current.current[id];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -329,6 +329,28 @@ test('后台任务结束满5分钟退出列表，运行任务保留并独立计�
     assert.equal(tasks.list()[0].finishedAt, now);
   } finally {
     t.mock.restoreAll();
+    await f.close();
+  }
+});
+
+test('重启清除无法续传的半成品，保留发送任务并恢复剩余容量预算', async () => {
+  const f = await fixture();
+  let restarted;
+  try {
+    const a = await f.join('发送者'),
+      b = await f.join('接收者'),
+      created = await f.create(a, [b]);
+    const file = f.s.files.get(created.data.id),
+      partial = f.s.files.filename(file, true);
+    f.s.files.save({ ...file, state: 'uploading', uploaded: 2 });
+    await f.s.close();
+    writeFileSync(partial, 'ab');
+    restarted = new RelayService(f.dir, path.resolve('dist'));
+    assert.equal(existsSync(partial), false);
+    assert.equal(restarted.files.get(file.id).state, 'failed');
+    assert.equal(restarted.capacity().committedBytes, 3);
+  } finally {
+    await restarted?.close();
     await f.close();
   }
 });

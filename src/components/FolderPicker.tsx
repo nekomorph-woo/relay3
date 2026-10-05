@@ -63,7 +63,12 @@ export function FolderPicker({
             const info = await window.relay3!.pickFolderFile();
             if (info) onPicked(asNativeFile(info));
             finishPreparation(t);
-            preparationProgress(t, info ? '文件夹已准备好' : '已取消选择');
+            preparationProgress(
+              t,
+              info ? '文件夹已准备好' : '已取消选择',
+              info?.size ?? 0,
+              info?.size ?? 0,
+            );
           } catch (e: any) {
             finishPreparation(t, e.message);
             onError(e.message);

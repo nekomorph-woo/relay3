@@ -95,9 +95,10 @@ test('凭证撤销停止重连；握手无响应也会重试', (t) => {
   assert.equal(f.sockets.length, 1);
   assert.equal(f.statuses.at(-1), 'expired');
 });
-test('连接握手卡住且无错误事件时会重试', (t) => {
+test('连接握手卡住且无错误事件时八秒超时并提供排查信息', (t) => {
   const f = fixture(t);
-  t.mock.timers.tick(45000);
+  t.mock.timers.tick(8000);
+  assert.match(f.errors[0].message, /WebSocket/);
   assert.equal(f.sockets[0].closed, true);
   t.mock.timers.tick(1000);
   assert.equal(f.sockets.length, 2);

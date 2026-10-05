@@ -4,7 +4,14 @@ import type { RelayService } from './service';
 import type { Device, Transfer } from './store';
 import type { Envelope } from '../src/chat/types';
 import { randomUUID, createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, renameSync, statfsSync } from 'node:fs';
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  renameSync,
+  statfsSync,
+  rmSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -51,9 +58,17 @@ export class FileDelivery {
     service.store.db.exec(
       "CREATE INDEX IF NOT EXISTS transfers_file ON transfers(json_extract(data,'$.fileId'))",
     );
-    for (const f of this.all())
+    for (const f of this.all()) {
       if (f.state === 'uploading')
         this.save({ ...f, state: 'failed', error: '上传中断，请重新选择原文件重试' });
+      if (['uploading', 'failed'].includes(f.state)) {
+        try {
+          rmSync(this.filename(f, true), { force: true });
+        } catch (error) {
+          diagnostic('warn', 'partial.cleanup-failed', { error });
+        }
+      }
+    }
   }
   all(): SharedFile[] {
     return (
