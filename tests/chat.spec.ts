@@ -145,13 +145,13 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
   await desktop.getByRole('button', { name: '发送密文', exact: true }).click();
   expect(
     await desktop
-      .locator('.chat-recipients label')
+      .locator('.recipient-page label')
       .filter({ hasText: '本机，固定包含' })
       .locator('.device-avatar')
       .innerHTML(),
   ).toBe(senderAvatar);
   await desktop
-    .locator('.chat-recipients label')
+    .locator('.recipient-page label')
     .filter({ hasText: '授权手机' })
     .locator('input')
     .check();

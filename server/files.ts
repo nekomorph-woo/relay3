@@ -102,15 +102,26 @@ export class FileDelivery {
           });
       }
   }
-  async remove(id: string) {
+  async remove(id: string, track = true) {
     if (this.busy(id)) fail('文件正在传输，请稍后清理', 409);
     const f = this.get(id);
+    const task = track
+      ? this.service.tasks.start('cleanup', f.name, 1, undefined, f.id)
+      : undefined;
     this.removing.add(id);
     try {
       await rm(this.filename(f), { force: true });
       await rm(this.filename(f, true), { force: true });
       this.save({ ...f, state: 'cleaned', cleanedAt: Date.now() });
       this.patchTransfers(id, { cleanedAt: Date.now() });
+      if (task) {
+        this.service.tasks.progress(task, 1);
+        this.service.tasks.released(task, f.uploaded);
+        this.service.tasks.finish(task);
+      }
+    } catch (error) {
+      if (task) this.service.tasks.finish(task, '缓存清理失败');
+      throw error;
     } finally {
       this.removing.delete(id);
     }
@@ -139,7 +150,7 @@ export class FileDelivery {
         ) {
           cleanup ??= this.service.tasks.start('cleanup', '清理过期缓存', files.length);
           try {
-            await this.remove(f.id);
+            await this.remove(f.id, false);
             this.service.tasks.released(cleanup, f.uploaded);
             this.service.tasks.progress(cleanup, ++checked);
           } catch (error) {

@@ -252,3 +252,39 @@ test('大量设备可搜索筛选、分页保留选择且文件选择区紧凑',
   expect(box!.height).toBeLessThan(100);
   await desktop.screenshot({ path: 'test-results/delivery-many-devices.png' });
 });
+
+test('文件发送弹窗在窄屏保留固定提交区，多文件列表独立滚动', async () => {
+  await phone.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  for (const width of [320, 375, 768]) {
+    await phone.setViewportSize({ width, height: 700 });
+    await phone.getByRole('button', { name: '发送文件', exact: true }).click();
+    const modal = phone.getByRole('dialog', { name: '发送文件', exact: true });
+    await modal
+      .getByLabel('选择群聊文件')
+      .setInputFiles(
+        Array.from({ length: 12 }, (_, i) => ({
+          name: `较长的测试文件名称-${i}.txt`,
+          mimeType: 'text/plain',
+          buffer: Buffer.from('内容'),
+        })),
+      );
+    const box = (await modal.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(box.y + box.height).toBeLessThanOrEqual(700);
+    const send = (await modal
+      .getByRole('button', { name: '发送文件', exact: true })
+      .boundingBox())!;
+    expect(send.y + send.height).toBeLessThanOrEqual(700);
+    expect(
+      await modal
+        .locator('.compact-file-picker')
+        .evaluate((el) => el.getBoundingClientRect().height),
+    ).toBeLessThan(100);
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    if (width === 375) await phone.screenshot({ path: 'test-results/delivery-phone-composer.png' });
+    await modal.getByRole('button', { name: '关闭文件发送' }).click();
+  }
+});
