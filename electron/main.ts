@@ -50,6 +50,7 @@ const discovery = new StationDiscovery(undefined, (base, signal) =>
 );
 let window: BrowserWindow | null = null;
 let quitting = false;
+let shutdownComplete = false;
 const downloads = new Map<string, AbortController>();
 function localUrl(raw: string) {
   const u = new URL(raw);
@@ -90,6 +91,10 @@ async function createWindow() {
     },
   });
   observeWindow(window);
+  window.webContents.on('render-process-gone', () => {
+    // 主进程仍可能持有中转监听与下载；页面崩溃后统一退出，避免静默运行。
+    app.quit();
+  });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (e, url) => {
     if (new URL(url).origin !== new URL(process.env.RELAY3_DEV_URL ?? service.controlUrl).origin)
@@ -161,6 +166,7 @@ else {
         ipcMain.handle(name, async (event, ...args) => {
           try {
             senderAllowed(event);
+            if (quitting) throw new Error('应用正在退出');
             return await fn(...args);
           } catch (error) {
             diagnostic('error', 'ipc.failed', { channel: name, error });
@@ -440,18 +446,31 @@ else {
       app.quit();
     });
   app.on('window-all-closed', () => app.quit());
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => app.quit());
   app.on('before-quit', (e) => {
-    if (!quitting && service) {
-      e.preventDefault();
-      quitting = true;
-      for (const c of downloads.values()) c.abort();
-      void service
-        .close()
-        .catch((error) => diagnostic('error', 'app.shutdown-failed', { error }))
-        .finally(async () => {
-          await discovery.close();
-          app.quit();
-        });
-    }
+    if (shutdownComplete) return;
+    e.preventDefault();
+    if (quitting) return;
+    quitting = true;
+    const deadline = setTimeout(() => {
+      diagnostic('error', 'app.shutdown-timeout');
+      app.exit(1);
+    }, 5000);
+    for (const c of downloads.values()) c.abort();
+    // 销毁渲染进程，同时终止全部客户端 WebSocket、XHR 和重连计时器。
+    window?.destroy();
+    const transfersSettled = (async () => {
+      while (downloads.size) await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    })();
+    void Promise.allSettled([service?.close(transfersSettled), discovery.close()]).then(
+      (results) => {
+        for (const result of results)
+          if (result.status === 'rejected')
+            diagnostic('error', 'app.shutdown-failed', { error: result.reason });
+        clearTimeout(deadline);
+        shutdownComplete = true;
+        app.quit();
+      },
+    );
   });
 }

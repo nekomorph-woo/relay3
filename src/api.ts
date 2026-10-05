@@ -3,6 +3,7 @@ import type { Device, Transfer, SavedConnection } from '../server/store';
 export type { Device, Transfer };
 export type Session = SavedConnection;
 export interface HubState {
+  connectionHeartbeat?: boolean;
   chatLatestId?: number;
   chatUnread?: number;
   stationId: string;

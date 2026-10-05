@@ -7,6 +7,7 @@ export default defineConfig({
     devicePlatform: 'src/devicePlatform.ts',
     diagnosticData: 'src/diagnosticData.ts',
     discovery: 'electron/discovery.ts',
+    connection: 'src/connection.ts',
   },
   format: ['esm'],
   outDir: 'dist-electron',

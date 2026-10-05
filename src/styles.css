@@ -3660,6 +3660,40 @@ main.native-page {
   font-size: 11px;
   color: var(--color-muted);
 }
+.nav-station-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 10px 12px 4px;
+}
+.nav-station-heading .nav-group-label {
+  padding: 0;
+}
+.local-station-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.station-status-dot {
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  flex: none;
+}
+.local-station-status[data-running='true'] {
+  color: #26734d;
+}
+.local-station-status[data-running='true'] .station-status-dot {
+  background: currentColor;
+}
 .connected-stations {
   overflow-y: auto;
   min-height: 0;
@@ -3734,7 +3768,8 @@ main.native-page {
   .sidebar:has(.station-switcher) .nav-item {
     height: 34px;
   }
-  .sidebar:has(.station-switcher) .nav-group-label {
+  .sidebar:has(.station-switcher) .nav-entry > .nav-group-label,
+  .sidebar:has(.station-switcher) .nav-station-heading {
     padding-top: 6px;
   }
 }

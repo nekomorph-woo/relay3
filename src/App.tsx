@@ -202,6 +202,7 @@ export default function App() {
   const desktop = !!window.relay3;
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [admin, setAdmin] = useState<AdminState | null>(null),
+    [stationOperation, setStationOperation] = useState<'start' | 'stop' | null>(null),
     [page, setPage] = useState<Page>('transfer');
   const multi = useConnections(desktop, inform);
   const { session, hub, connected } = multi;
@@ -361,6 +362,19 @@ export default function App() {
   }
   async function refreshAdmin() {
     if (boot) setAdmin(await management<AdminState>('/status'));
+  }
+  async function changeStation(operation: 'start' | 'stop') {
+    setStationOperation(operation);
+    try {
+      const next = await management<AdminState>(
+        '/station/' + operation,
+        operation === 'stop' ? { force: true } : {},
+      );
+      setAdmin(next);
+      return next;
+    } finally {
+      setStationOperation(null);
+    }
   }
   async function action(t: Transfer, a: string) {
     if (!session) return;
@@ -838,7 +852,27 @@ export default function App() {
                 <span className="nav-group-label">客户端工作区</span>
               )}
               {desktop && id === 'station' && (
-                <span className="nav-group-label">中转站服务端管理</span>
+                <div className="nav-station-heading">
+                  <span className="nav-group-label">中转站服务端管理</span>
+                  <button
+                    type="button"
+                    className="local-station-status"
+                    data-running={admin?.running ?? false}
+                    aria-label="本机中转站状态"
+                    onClick={() => setPage('station')}
+                  >
+                    <span className="station-status-dot" aria-hidden="true" />
+                    {stationOperation === 'start'
+                      ? '开启中'
+                      : stationOperation === 'stop'
+                        ? '关闭中'
+                        : !admin
+                          ? '加载中'
+                          : admin.running
+                            ? '已开启'
+                            : '未开启'}
+                  </button>
+                </div>
               )}
               {desktop && id === 'settings' && <span className="nav-group-label">本机管理</span>}
               <button
@@ -1312,7 +1346,9 @@ export default function App() {
                       onClick={() =>
                         admin.running
                           ? setModal('stop')
-                          : void run(async () => setAdmin(await management('/station/start', {})))
+                          : void run(async () => {
+                              await changeStation('start');
+                            })
                       }
                     >
                       {admin.running ? (
@@ -2551,10 +2587,7 @@ export default function App() {
                         await refreshAdmin();
                         inform('设备及连接历史已清除，收发记录保留');
                       } else if (modal === 'stop') {
-                        const stopped = await management<AdminState>('/station/stop', {
-                          force: true,
-                        });
-                        setAdmin(stopped);
+                        const stopped = await changeStation('stop');
                         if (multi.current.current[stopped.settings.stationId])
                           await disconnectStation(stopped.settings.stationId);
                       } else if (modal === 'clearCache') {

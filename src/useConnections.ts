@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { reportException } from './diagnostics';
 import type { HubState, Session } from './api';
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'expired';
+import { connectStation, type ConnectionStatus } from './connection';
+export type { ConnectionStatus } from './connection';
 export interface ClientConnection {
   session: Session;
   hub: HubState | null;
@@ -21,9 +22,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
       string,
       {
         signature: string;
-        socket?: WebSocket;
-        timer?: ReturnType<typeof setTimeout>;
-        stopped: boolean;
+        stop: () => void;
       }
     >(),
   );
@@ -44,9 +43,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
     (id: string) => {
       const resource = sockets.current.get(id);
       if (resource) {
-        resource.stopped = true;
-        clearTimeout(resource.timer);
-        resource.socket?.close();
+        resource.stop();
         sockets.current.delete(id);
       }
       update((old) => {
@@ -63,9 +60,7 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
       if (current.current[session.stationId]?.status === 'expired') {
         const resource = sockets.current.get(session.stationId);
         if (resource) {
-          resource.stopped = true;
-          clearTimeout(resource.timer);
-          resource.socket?.close();
+          resource.stop();
           sockets.current.delete(session.stationId);
         }
         setRetry((old) => old + 1);
@@ -117,87 +112,35 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
         !connection ||
         resource.signature !== connection.session.base + ':' + connection.session.token
       ) {
-        resource.stopped = true;
-        clearTimeout(resource.timer);
-        resource.socket?.close();
+        resource.stop();
         sockets.current.delete(id);
       }
     }
     for (const [id, connection] of Object.entries(current.current)) {
       if (sockets.current.has(id)) continue;
       const session = connection.session;
-      const resource: {
-        signature: string;
-        socket?: WebSocket;
-        timer?: ReturnType<typeof setTimeout>;
-        stopped: boolean;
-      } = { signature: session.base + ':' + session.token, stopped: false };
-      sockets.current.set(id, resource);
-      let attempts = 0;
-      const status = (status: ConnectionStatus) => {
-        if (resource.stopped) return;
-        update((old) => (old[id] ? { ...old, [id]: { ...old[id], status } } : old));
-      };
-      function connect() {
-        if (resource.stopped) return;
-        const socket = new WebSocket(
-          session.base.replace(/^http/, 'ws') +
-            '/api/ws?token=' +
-            encodeURIComponent(session.token),
-        );
-        resource.socket = socket;
-        socket.onopen = () => {
-          attempts = 0;
-          status('connected');
-        };
-        socket.onmessage = (event) => {
-          if (resource.stopped) return;
-          try {
-            const hub: HubState = JSON.parse(event.data);
-            if (
-              hub.stationId !== id ||
-              hub.self?.id !== session.id ||
-              !Array.isArray(hub.transfers) ||
-              !Array.isArray(hub.devices)
-            )
-              throw new Error('中转站身份或状态不匹配');
-            updateHub(id, hub);
-          } catch (error) {
-            reportException('connection.invalid-state ' + session.stationName, error, {
-              stationId: id,
-              base: session.base,
-            });
-          }
-        };
-        socket.onclose = (event) => {
-          if (resource.stopped) return;
-          if ([4001, 4002, 4003].includes(event.code)) {
-            status('expired');
-            notify.current(
-              `${session.stationName}：${event.code === 4001 ? '连接凭证失效，请重新配对' : event.code === 4002 ? '此设备已在另一窗口连接' : '管理员已断开此设备'}`,
-              true,
-            );
-            return;
-          }
-          status('reconnecting');
-          resource.timer = setTimeout(connect, Math.min(30000, 1000 * 2 ** attempts++));
-        };
-        socket.onerror = () =>
-          reportException(
-            'connection.socket-error ' + session.stationName,
-            new Error('中转站实时连接失败'),
-            { stationId: id, base: session.base },
-          );
-      }
-      connect();
+      const stop = connectStation(session, {
+        state: (hub) => updateHub(id, hub),
+        status: (status) =>
+          update((old) => (old[id] ? { ...old, [id]: { ...old[id], status } } : old)),
+        expired: (code) =>
+          notify.current(
+            `${session.stationName}：${code === 4001 ? '连接凭证失效，请重新配对' : code === 4002 ? '此设备已在另一窗口连接' : '管理员已断开此设备'}`,
+            true,
+          ),
+        error: (error) =>
+          reportException('connection.socket-error ' + session.stationName, error, {
+            stationId: id,
+            base: session.base,
+          }),
+      });
+      sockets.current.set(id, { signature: session.base + ':' + session.token, stop });
     }
   }, [signature, retry, update, updateHub]);
   useEffect(
     () => () => {
       for (const resource of sockets.current.values()) {
-        resource.stopped = true;
-        clearTimeout(resource.timer);
-        resource.socket?.close();
+        resource.stop();
       }
       sockets.current.clear();
     },

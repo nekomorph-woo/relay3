@@ -127,6 +127,7 @@ export class FileDelivery {
     }
   }
   async maintenance(now = Date.now()) {
+    if (this.service.closing || this.service.closed) return;
     if (this.cleaning || this.service.cacheMigration) return this.cleaning;
     this.cleaning = this.runMaintenance(now).finally(() => {
       this.cleaning = null;

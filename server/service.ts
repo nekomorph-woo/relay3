@@ -47,6 +47,9 @@ export class RelayService {
   store: Store;
   chat: ChatStore;
   closed = false;
+  closing = false;
+  private closePromise: Promise<void> | null = null;
+  private stoppingHub: Promise<void> | null = null;
   cacheMigration: Promise<void> | null = null;
   adminToken = token();
   pairingToken = token();
@@ -168,6 +171,7 @@ export class RelayService {
   }
   state(d: Device) {
     return {
+      connectionHeartbeat: true,
       stationId: this.store.settings.stationId,
       stationName: this.store.settings.stationName,
       chatLatestId: this.chat.latest(),
@@ -305,6 +309,9 @@ export class RelayService {
       bodyLimit: 1_048_576,
       requestTimeout: 0,
       forceCloseConnections: true,
+    });
+    app.addHook('onRequest', async () => {
+      if (this.closing || this.closed) fail('应用正在退出', 503);
     });
     await app.register(cors, {
       methods: ['GET', 'HEAD', 'POST', 'PUT', 'OPTIONS'],
@@ -713,6 +720,8 @@ export class RelayService {
     return this.controlUrl;
   }
   async startHub() {
+    if (this.closing || this.closed) fail('应用正在退出', 503);
+    if (this.stoppingHub) fail('中转站正在关闭', 409);
     if (this.cacheMigration) fail('缓存迁移中，请稍后开启中转站', 409);
     if (this.hub) return;
     const app = await this.base();
@@ -832,6 +841,10 @@ export class RelayService {
         client.alive = true;
         const current = this.store.device(d.id);
         if (current) this.store.saveDevice({ ...current, lastSeen: Date.now() });
+      });
+      socket.on('message', (data) => {
+        if (data.toString() === '{"type":"ping"}' && socket.readyState === WebSocket.OPEN)
+          socket.send('{"type":"pong"}');
       });
       socket.on('error', (error) =>
         diagnostic('error', 'connection.socket-error', { platform: d.platform, error }),
@@ -1091,6 +1104,10 @@ export class RelayService {
     });
     try {
       await app.listen({ host: '0.0.0.0', port: this.store.settings.port });
+      if (this.closing || this.closed) {
+        await app.close();
+        fail('应用正在退出', 503);
+      }
       this.hub = app;
       void this.files.maintenance();
       this.notifyHubChanged();
@@ -1102,8 +1119,15 @@ export class RelayService {
     }
   }
   async stopHub(force = false) {
+    if (this.stoppingHub) return this.stoppingHub;
     if (!this.hub) return;
     if (this.streams.size && !force) fail('当前有文件正在传输，请完成或取消后关闭', 409);
+    this.stoppingHub = this.stopHubResources().finally(() => {
+      this.stoppingHub = null;
+    });
+    return this.stoppingHub;
+  }
+  private async stopHubResources() {
     for (const controller of this.streams.values()) controller.abort();
     const closing = [...this.clients.values()].map(
       (c) =>
@@ -1116,21 +1140,28 @@ export class RelayService {
           c.socket.close(4000, '中转站已关闭');
         }),
     );
-    const app = this.hub;
+    const app = this.hub!;
     this.hub = null;
     this.notifyHubChanged();
     await Promise.all(closing);
     await app.close();
+    // 流的失败处理还会写入任务状态，必须在 SQLite 关闭前收尾。
+    while (this.streams.size) await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  async close() {
-    if (this.closed) return;
+  close(clientTransfers?: Promise<void>): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    this.closing = true;
+    this.closePromise = this.closeResources(clientTransfers);
+    return this.closePromise;
+  }
+  private async closeResources(clientTransfers?: Promise<void>) {
     clearInterval(this.cleanTimer);
     clearInterval(this.heartbeat);
+    await this.stopHub(true);
     await this.cacheMigration?.catch(() => {});
     await this.files.cleaning;
-    await this.stopHub(true);
-    await this.files.cleaning;
     await this.control?.close();
+    await clientTransfers;
     this.closed = true;
     this.store.close();
   }
