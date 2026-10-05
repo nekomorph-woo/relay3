@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import type { PackageView } from '../../server/packages';
 import type { SharedFile } from '../../server/files';
-import { date, request, sizes, type Session, type Transfer } from '../api';
+import { date, request, sizes, duration, type Session, type Transfer } from '../api';
 import { uploadPackageFile } from '../packageDelivery';
 import { FileTask, resolveFileName, type LocalFile } from './FileTask';
 import { DeviceAvatar } from './DeviceAvatar';
@@ -52,7 +52,8 @@ export function FilePackageCard({
     [tab, setTab] = useState<'files' | 'devices'>('files');
   const [page, setPage] = useState(0),
     [devicePage, setDevicePage] = useState(0),
-    [query, setQuery] = useState('');
+    [query, setQuery] = useState(''),
+    [recipientFilePages, setRecipientFilePages] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
     [result, setResult] = useState(''),
@@ -311,20 +312,68 @@ export function FilePackageCard({
                       ['pending', 'ready', 'downloading', 'awaiting-confirm'].includes(t.status) &&
                       !t.cleanedAt &&
                       (t.status === 'downloading' || Date.now() < (t.receiveDeadline ?? 0)),
-                  ).length;
+                  ).length,
+                  expired = tasks.filter((t) =>
+                    ['expired', 'receive-expired'].includes(t.status),
+                  ).length,
+                  cleaned = tasks.filter((t) => t.cleanedAt && !t.lastDownloadedAt).length,
+                  filePage = Math.min(
+                    recipientFilePages[d.id] ?? 0,
+                    Math.max(0, Math.ceil(p.files.length / 8) - 1),
+                  );
                 return (
-                  <div className="package-recipient" key={d.id}>
-                    <DeviceAvatar id={d.id} name={d.name} size={28} />
-                    <span>
-                      {d.name}
-                      <DeviceTag platform={d.platform} />
-                      <small>
-                        {devices.find((x) => x.id === d.id)?.online ? '在线' : '离线'} · 已收到{' '}
-                        {received}/{tasks.length}
-                        {rejected ? ` · 已拒绝 ${rejected}` : ''} · 待处理 {pending}
-                      </small>
-                    </span>
-                  </div>
+                  <details className="package-recipient-detail" key={d.id}>
+                    <summary className="package-recipient">
+                      <DeviceAvatar id={d.id} name={d.name} size={28} />
+                      <span>
+                        {d.name}
+                        <DeviceTag platform={d.platform} />
+                        <small>
+                          {devices.find((x) => x.id === d.id)?.online ? '在线' : '离线'} · 已收到{' '}
+                          {received}/{tasks.length}
+                          {rejected ? ` · 已拒绝 ${rejected}` : ''} · 待处理 {pending}
+                          {expired ? ` · 超时未处理 ${expired}` : ''}
+                          {cleaned ? ` · 缓存已清理 ${cleaned}` : ''}
+                        </small>
+                      </span>
+                      <ChevronDown size={15} />
+                    </summary>
+                    <div className="package-recipient-files">
+                      {p.files.slice(filePage * 8, (filePage + 1) * 8).map((file) => (
+                        <RecipientFile
+                          key={file.id}
+                          file={file}
+                          recipientId={d.id}
+                          session={session}
+                        />
+                      ))}
+                      {p.files.length > 8 && (
+                        <div className="package-pagination">
+                          <button
+                            aria-label={`${d.name}文件上一页`}
+                            disabled={!filePage}
+                            onClick={() =>
+                              setRecipientFilePages((old) => ({ ...old, [d.id]: filePage - 1 }))
+                            }
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span>
+                            {filePage + 1}/{Math.ceil(p.files.length / 8)}
+                          </span>
+                          <button
+                            aria-label={`${d.name}文件下一页`}
+                            disabled={(filePage + 1) * 8 >= p.files.length}
+                            onClick={() =>
+                              setRecipientFilePages((old) => ({ ...old, [d.id]: filePage + 1 }))
+                            }
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 );
               })}
               {recipientRows.length > 4 && (
@@ -544,6 +593,9 @@ function PackageFileRow({
         <strong>{name}</strong>
         <small>
           {sizes(f.size)}
+          {sender && task?.uploadDuration != null
+            ? ` · 上传耗时 ${duration(task.uploadDuration)}`
+            : ''}
           {sender
             ? ` · 已收到 ${f.transfers.filter((t) => t.lastDownloadedAt).length}/${f.transfers.length}`
             : ''}
@@ -606,6 +658,38 @@ function PackageFileRow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecipientFile({
+  file,
+  recipientId,
+  session,
+}: {
+  file: SharedFile & { transfers: Transfer[] };
+  recipientId: string;
+  session?: Session;
+}) {
+  const [name, setName] = useState(file.name);
+  useEffect(() => {
+    let dead = false;
+    if (session)
+      void resolveFileName(file, session)
+        .then((value) => {
+          if (!dead) setName(value ?? '未知文件');
+        })
+        .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [file.id, session?.id, session?.token]);
+  const task = file.transfers.find((t) => t.recipientId === recipientId);
+  return (
+    <div className="package-recipient-file">
+      <strong>{name}</strong>
+      {task?.duration != null && <small>传输耗时 {duration(task.duration)}</small>}
+      {task && <FileTask t={task} compact onUpdated={() => {}} onError={() => {}} />}
     </div>
   );
 }

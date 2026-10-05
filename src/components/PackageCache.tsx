@@ -12,6 +12,7 @@ export function PackageCache({
   session,
   onUpdated,
   onError,
+  onClean,
 }: {
   id: string;
   entries: CacheState['entries'];
@@ -21,10 +22,10 @@ export function PackageCache({
   session?: Session;
   onUpdated: () => void;
   onError: (message: string) => void;
+  onClean: (ids: string[]) => void;
 }) {
   const [p, setPackage] = useState<PackageView | null>(null),
     [open, setOpen] = useState(false),
-    [busy, setBusy] = useState(false),
     [page, setPage] = useState(0);
   const manager = useRef(management);
   manager.current = management;
@@ -69,27 +70,7 @@ export function PackageCache({
           </span>
           <ChevronDown size={16} className={open ? 'expanded' : ''} />
         </button>
-        <button
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void management(`/packages/${id}/clean`, {})
-              .then((r) => {
-                const skipped = r.results.filter((x: any) => !x.ok).length;
-                if (skipped) onError(`已清理可用缓存，${skipped} 个文件正在传输或清理失败`);
-                setSelected(
-                  selected.filter((x) => !r.results.some((r: any) => r.ok && r.id === x)),
-                );
-              })
-              .catch((e) => onError(e.message))
-              .finally(() => {
-                setBusy(false);
-                onUpdated();
-              });
-          }}
-        >
-          清理文件包
-        </button>
+        <button onClick={() => onClean(ids)}>清理文件包</button>
       </div>
       {open && (
         <div className="package-body">

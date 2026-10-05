@@ -895,6 +895,9 @@ export default function App() {
             (f) => f.stationId === t.stationId && f.transferId === t.id && f.exists,
           )),
     ) ?? [];
+  const transferCount = new Set(
+    transfers.map((t) => (t.packageId ? `package:${t.packageId}` : `transfer:${t.id}`)),
+  ).size;
   const nav = [
     { id: 'transfer' as Page, label: '文件传输', icon: ArrowLeftRight },
     { id: 'chat' as Page, label: '群聊大厅', icon: MessageSquare },
@@ -985,8 +988,8 @@ export default function App() {
                       )}
                     </span>
                   )}
-                {id === 'transfer' && transfers.length > 0 && (
-                  <span className="count">{transfers.length}</span>
+                {id === 'transfer' && transferCount > 0 && (
+                  <span className="count">{transferCount}</span>
                 )}
               </button>
             </div>
@@ -1173,9 +1176,7 @@ export default function App() {
                 <section className="panel transfer-queue">
                   <div className="section-head">
                     <h2>当前传输</h2>
-                    <span className="subtle">
-                      {transfers.length ? `${transfers.length} 项` : '0 项'}
-                    </span>
+                    <span className="subtle">{transferCount ? `${transferCount} 项` : '0 项'}</span>
                   </div>
                   <ScrollArea
                     memoryKey={`transfer:${multi.activeId}`}
@@ -2034,6 +2035,10 @@ export default function App() {
                                 selected={selected}
                                 setSelected={setSelected}
                                 management={management}
+                                onClean={(ids) => {
+                                  setSelected(ids);
+                                  setModal('clearCache');
+                                }}
                                 session={
                                   Object.values(multi.connections).find(
                                     (c) => c.session.stationId === admin.settings.stationId,

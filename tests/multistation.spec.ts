@@ -258,14 +258,16 @@ test('双站同时在线、后台传输与消息隔离、并行同 ID 下载、�
       services.map((s) => s.store.settings.stationId).sort(),
     );
     await page.getByRole('button', { name: '收发记录', exact: true }).click();
-    await expect(page.locator('.record-row')).toHaveCount(4);
+    await expect(page.locator('.record-row')).toHaveCount(2);
+    await expect(page.locator('.file-package')).toHaveCount(2);
     await expect(page.locator('.record-row').filter({ hasText: '收到0.bin' })).toContainText(
       '甲中转站',
     );
     await page
       .getByRole('combobox', { name: '按中转站筛选记录' })
       .selectOption(services[1].store.settings.stationId);
-    await expect(page.locator('.record-row')).toHaveCount(2);
+    await expect(page.locator('.record-row')).toHaveCount(1);
+    await expect(page.locator('.file-package')).toHaveCount(1);
     await page.screenshot({ path: 'design/qa/multistation-history.png' });
     await page.getByRole('button', { name: '接收文件', exact: true }).click();
     await page

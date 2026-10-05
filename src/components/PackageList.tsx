@@ -85,15 +85,39 @@ export function PackageList({
     setRevision((n) => n + 1);
     callbacks.current.onUpdated();
   };
+  const visible = items.filter(
+    (p) =>
+      p.state === 'uploading' ||
+      p.files.some((f) =>
+        f.transfers.some(
+          (t) =>
+            !t.cleanedAt &&
+            ([
+              'pending',
+              'ready',
+              'uploading',
+              'downloading',
+              'awaiting-confirm',
+              'accepted',
+            ].includes(t.status) ||
+              (t.recipientId === session.id &&
+                !!t.lastDownloadedAt &&
+                Date.now() < (t.expiresAt ?? 0) &&
+                !localFiles.some(
+                  (l) => l.stationId === p.stationId && l.transferId === t.id && l.exists,
+                ))),
+        ),
+      ),
+  );
   return (
     <div className="package-list" aria-label="文件包列表">
       {error && <p role="alert">{error}</p>}
-      {!items.length && (
+      {!visible.length && (
         <p className="package-empty">
           {loaded ? '暂无待处理文件包' : connected ? '正在读取文件包…' : '中转站已断开'}
         </p>
       )}
-      {items.map((p) => (
+      {visible.map((p) => (
         <FilePackageCard
           key={p.id}
           p={p}

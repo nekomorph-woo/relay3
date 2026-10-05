@@ -430,3 +430,89 @@ test('重启后保留暂存成功成员和固定期限，24小时未成包自动
     await f.close();
   }
 });
+
+test('整包取消正在上传的成员不会复活暂存状态，缓存删除等待流收尾', async () => {
+  const f = await fixture();
+  const { PassThrough } = await import('node:stream');
+  try {
+    const body = f.manifest(['甲']);
+    await f.call('/api/packages', f.a.token, body);
+    const stream = new PassThrough();
+    const reply = {
+      status: 200,
+      code(status) {
+        this.status = status;
+        return this;
+      },
+      send(data) {
+        return data;
+      },
+    };
+    const operation = f.s.files.upload(
+      {
+        params: { id: body.files[0].id },
+        headers: { authorization: 'Bearer ' + f.a.token },
+        body: stream,
+      },
+      reply,
+    );
+    while (!f.s.streams.has(body.files[0].id)) await new Promise((r) => setImmediate(r));
+    await f.call(`/api/packages/${body.id}/cancel`, f.a.token, {});
+    await operation;
+    assert.equal(reply.status, 409);
+    assert.equal(f.s.packages.get(body.id).state, 'cancelled');
+    assert.equal(f.s.files.transfers(body.files[0].id)[0].status, 'cancelled');
+    await f.s.files.cleaning;
+    await f.s.files.maintenance();
+    assert.equal(f.s.files.get(body.files[0].id).state, 'cleaned');
+    assert.equal((await f.upload(body, 0, '甲')).status, 409);
+  } finally {
+    await f.close();
+  }
+});
+
+test('正在首次或重复下载时取消文件包，下载结束回调不能覆盖取消或已收到历史', async () => {
+  const f = await fixture();
+  const { EventEmitter } = await import('node:events');
+  try {
+    for (const repeated of [false, true]) {
+      const body = f.manifest(['甲']);
+      await f.call('/api/packages', f.a.token, body);
+      await f.upload(body, 0, '甲');
+      const p = (await f.call(`/api/packages/${body.id}/publish`, f.a.token, {})).data,
+        t = p.files[0].transfers[0],
+        last = Date.now() - 1000;
+      f.s.store.saveTransfer({
+        ...t,
+        status: repeated ? 'completed' : 'ready',
+        ...(repeated ? { lastDownloadedAt: last } : {}),
+      });
+      const raw = new EventEmitter();
+      raw.writableFinished = false;
+      const reply = {
+        raw,
+        header() {
+          return this;
+        },
+        send(stream) {
+          return stream;
+        },
+      };
+      const stream = f.s.files.download(
+        { query: {}, headers: { authorization: 'Bearer ' + f.b.token } },
+        reply,
+        f.s.getTransfer(t.id),
+      );
+      stream.on('error', () => {});
+      await f.call(`/api/packages/${body.id}/cancel`, f.a.token, {});
+      await new Promise((r) => setImmediate(r));
+      assert.equal(f.s.getTransfer(t.id).status, repeated ? 'completed' : 'cancelled');
+      assert.equal(f.s.getTransfer(t.id).lastDownloadedAt, repeated ? last : null);
+      raw.emit('finish');
+      stream.destroy();
+      assert.equal(f.s.getTransfer(t.id).status, repeated ? 'completed' : 'cancelled');
+    }
+  } finally {
+    await f.close();
+  }
+});

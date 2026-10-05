@@ -4786,3 +4786,60 @@ textarea {
     flex-wrap: wrap;
   }
 }
+.package-recipient-detail {
+  border-bottom: 1px solid var(--color-rule);
+}
+.package-recipient-detail:last-child {
+  border-bottom: 0;
+}
+.package-recipient-detail summary {
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 0;
+}
+.package-recipient-detail summary::-webkit-details-marker {
+  display: none;
+}
+.package-recipient-detail summary > span:not(.device-avatar) {
+  flex: 1;
+}
+.package-recipient-detail summary > svg {
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.package-recipient-detail[open] summary > svg {
+  transform: rotate(180deg);
+}
+.package-recipient-files {
+  padding: 0 12px 12px 38px;
+}
+.package-recipient-file {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-rule);
+}
+.package-recipient-file > strong {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.package-file-controls .retry-file {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper);
+}
+.package-file-controls .retry-file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.package-file-controls .retry-file:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

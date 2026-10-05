@@ -9,7 +9,7 @@ import {
   FolderOpen,
   CircleHelp,
 } from 'lucide-react';
-import { request, date, labels, type Session, type Transfer } from '../api';
+import { request, date, labels, sizes, type Session, type Transfer } from '../api';
 import { Tooltip } from './Tooltip';
 import { decryptMessage } from '../chat/crypto';
 import { stored } from '../api';
@@ -215,6 +215,11 @@ export function FileTask({
           <CircleHelp size={13} />
         </Tooltip>
       </span>
+      {['uploading', 'downloading'].includes(t.status) && (
+        <small>
+          {sizes(t.status === 'uploading' ? t.uploaded : t.downloaded)} / {sizes(t.size)}
+        </small>
+      )}
       {t.lastDownloadedAt && <small>已下载过 · 最近下载于 {date(t.lastDownloadedAt)}</small>}
       {t.receiveDeadline && !compact && (
         <small>

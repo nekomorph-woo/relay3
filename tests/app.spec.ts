@@ -100,10 +100,10 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
     .getByLabel('选择待发送文件')
     .setInputFiles({ name: filename, mimeType: 'text/plain', buffer: content });
   await desktop.getByRole('button', { name: '发送', exact: true }).click();
-  const incoming = mobile.locator('.transfer-row').filter({ hasText: filename });
+  const incoming = mobile.locator('.package-file-row').filter({ hasText: filename });
   for (const width of [320, 375, 414, 768]) {
     await mobile.setViewportSize({ width, height: 900 });
-    const details = await incoming.locator('.transfer-details').boundingBox();
+    const details = await incoming.locator('.package-file-main').boundingBox();
     expect(details!.width).toBeGreaterThan(200);
     const title = await incoming.locator('strong').boundingBox();
     expect(title!.height).toBeLessThan(150);
@@ -127,23 +127,24 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
     .getByLabel('选择待发送文件')
     .setInputFiles({ name: '手机文件.txt', mimeType: 'text/plain', buffer: back });
   await mobile.getByRole('button', { name: '发送', exact: true }).click();
-  const receive = desktop.locator('.transfer-row').filter({ hasText: '手机文件.txt' });
+  const receive = desktop.locator('.package-file-row').filter({ hasText: '手机文件.txt' });
   await receive.getByRole('button', { name: '接收', exact: true }).click();
 
   await expect(receive).toHaveCount(0);
   expect(readFileSync(path.join(dir, 'received', '手机文件.txt'))).toEqual(back);
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
-  await expect(desktop.locator('.record-row')).toHaveCount(2);
-  await expect(desktop.locator('.record-row').first()).toContainText('已接收');
+  await expect(desktop.locator('.file-package')).toHaveCount(2);
+  await desktop.locator('.file-package').first().locator('.package-summary').click();
+  await expect(desktop.locator('.file-package').first()).toContainText('已接收');
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
-  await expect(desktop.locator('.cache-row:not(.received-row)')).toHaveCount(2);
+  await expect(desktop.locator('.package-cache')).toHaveCount(2);
   await desktop.getByLabel('选择所有可清理文件').check();
   await desktop.getByRole('button', { name: /清理所选/ }).click();
   await desktop.getByRole('button', { name: '确认清理' }).click();
-  await expect(desktop.locator('.cache-row:not(.received-row)')).toHaveCount(0);
+  await expect(desktop.locator('.package-cache')).toHaveCount(0);
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
-  await expect(desktop.locator('.record-row')).toHaveCount(2);
-  await expect(desktop.locator('.record-row').first()).toContainText('缓存已清理');
+  await expect(desktop.locator('.file-package')).toHaveCount(2);
+  await expect(desktop.locator('.file-package').first()).toContainText('缓存已清理');
   expect(existsSync(path.join(dir, 'received', '手机文件.txt'))).toBeTruthy();
   await desktop.screenshot({ path: 'test-results/desktop-history.png', fullPage: true });
 });
@@ -202,7 +203,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
     .click();
 
   await desktop.getByRole('button', { name: '接收文件', exact: true }).click();
-  await expect(desktop.locator('.cache-row:not(.received-row)')).toHaveCount(0);
+  await expect(desktop.locator('.package-cache')).toHaveCount(0);
   await desktop.getByRole('button', { name: '接收文件位置', exact: true }).click();
   await expect(desktop.locator('.storage-location-card')).toHaveCount(1);
   await expect(desktop.locator('.paths')).not.toContainText(status.databasePath);
@@ -248,14 +249,14 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
       .setInputFiles({ name: '跨站文件.txt', mimeType: 'text/plain', buffer: data });
     await remotePage.getByRole('button', { name: '发送', exact: true }).click();
     await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
-    const row = desktop.locator('.transfer-row').filter({ hasText: '跨站文件.txt' });
+    const row = desktop.locator('.package-file-row').filter({ hasText: '跨站文件.txt' });
     await row.getByRole('button', { name: '接收', exact: true }).click();
 
     await expect(row).toHaveCount(0);
     expect(readFileSync(path.join(dir, 'received', '跨站文件.txt'))).toEqual(data);
     await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
-    await expect(desktop.locator('.record-row')).toHaveCount(3);
-    await expect(desktop.locator('.record-row').first()).toContainText('跨站文件.txt');
+    await expect(desktop.locator('.file-package')).toHaveCount(3);
+    await expect(desktop.locator('.file-package').first()).toContainText('跨站文件.txt');
     expect((await admin('/status')).running).toBeTruthy();
     await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
     await desktop.getByRole('button', { name: '接收文件', exact: true }).click();
@@ -270,7 +271,7 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     await expect(desktop.locator('.received-row')).toHaveCount(1);
     expect(existsSync(path.join(dir, 'received', '跨站文件.txt'))).toBeFalsy();
     await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
-    await expect(desktop.locator('.record-row')).toHaveCount(3);
+    await expect(desktop.locator('.file-package')).toHaveCount(3);
     expect(errors).toEqual([]);
   } finally {
     await remotePage.close();
