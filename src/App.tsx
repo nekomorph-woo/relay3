@@ -418,15 +418,22 @@ export default function App() {
       setBoot((b) => (b ? { ...b, deviceName: value } : b));
     } else save('relay3-device-name', value);
     setDeviceName(value);
-    await Promise.all(
-      Object.values(multi.connections)
-        .filter((c) => c.status === 'connected')
-        .map((c) =>
-          request(c.session.base, c.session.token, '/api/device', { name: value }).catch(() => {}),
-        ),
-    );
     inform('设置已保存');
   }
+  useEffect(() => {
+    if (!desktop && page === 'settings') setIdentityName(deviceName);
+  }, [desktop, page, deviceName]);
+  const connectionIdentityKey = Object.values(multi.connections)
+    .map((c) => `${c.session.stationId}:${c.status}`)
+    .sort()
+    .join('|');
+  useEffect(() => {
+    const name = boot?.deviceName ?? deviceName;
+    for (const c of Object.values(multi.connections)) {
+      if (c.status === 'connected' && c.hub?.self.name !== name)
+        void request(c.session.base, c.session.token, '/api/device', { name }).catch(() => {});
+    }
+  }, [connectionIdentityKey, boot?.deviceName, deviceName]);
   const [diagnosticState, setDiagnosticState] = useState<{
     path: string;
     crashPath: string;
@@ -686,7 +693,7 @@ export default function App() {
         : undefined;
     const body = {
       id,
-      name: deviceName,
+      name: boot?.deviceName ?? deviceName,
       ...(boot
         ? { platform: boot.platform, platformSource: 'native' }
         : {
@@ -2352,14 +2359,14 @@ export default function App() {
           {page === 'settings' && !desktop && (
             <section className="panel mobile-device-settings">
               <h2>设备身份</h2>
-              <DeviceAvatar id={mobileId.current} name={deviceName} size={48} />
+              <DeviceAvatar id={mobileId.current} name={identityName} size={48} />
               <label>
                 设备名称
                 <input
                   required
                   maxLength={80}
-                  value={deviceName}
-                  onChange={(e) => setDeviceName(e.target.value)}
+                  value={identityName}
+                  onChange={(e) => setIdentityName(e.target.value)}
                 />
               </label>
               <div className="identity-code">
@@ -2375,7 +2382,7 @@ export default function App() {
                 <Button
                   kind="primary"
                   disabled={busy}
-                  onClick={() => void run(() => saveDeviceName(deviceName))}
+                  onClick={() => void run(() => saveDeviceName(identityName))}
                 >
                   保存设置
                 </Button>
@@ -2535,11 +2542,14 @@ export default function App() {
             <label>
               设备名称
               <input
-                required
-                maxLength={80}
-                value={deviceName}
-                onChange={(e) => setDeviceName(e.target.value)}
+                aria-label="设备名称"
+                aria-describedby="pairing-device-identity-hint"
+                readOnly
+                value={boot?.deviceName ?? deviceName}
               />
+              <small id="pairing-device-identity-hint">
+                统一使用本机设备身份，修改名称请{desktop ? '点击左上角头像' : '前往设置'}。
+              </small>
             </label>
             <label>
               配对码

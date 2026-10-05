@@ -1,3 +1,4 @@
+import { setBrowserDeviceName } from './device-ui';
 import {
   test,
   expect,
@@ -84,7 +85,7 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   base = `http://127.0.0.1:${status.settings.port}`;
   await mobile.goto(`${base}/#pair=${status.pairingCode}`);
   await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
-  await mobile.getByLabel('设备名称').fill('测试手机');
+  await setBrowserDeviceName(mobile, '测试手机');
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
@@ -163,6 +164,15 @@ test('手机页面在 320、375、414、768 像素下无横向溢出，设置可
   await mobile.getByLabel('设备名称').fill('手机新名称');
   await mobile.getByRole('button', { name: '保存设置' }).click();
   await expect(mobile.getByRole('status')).toContainText('设置已保存');
+  await mobile.getByLabel('设备名称').fill('未保存的名称草稿');
+  await mobile.getByRole('button', { name: '文件传输', exact: true }).click();
+  await mobile.getByRole('button', { name: '断开中转站', exact: true }).click();
+  await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
+  const pairing = mobile.getByRole('dialog', { name: '连接中转站', exact: true });
+  await expect(pairing.getByLabel('设备名称', { exact: true })).toHaveValue('手机新名称');
+  await expect(pairing.getByLabel('设备名称', { exact: true })).not.toBeEditable();
+  await pairing.getByRole('button', { name: '连接', exact: true }).click();
+  await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await mobile.setViewportSize({ width: 375, height: 812 });
   await mobile.getByRole('button', { name: '文件传输', exact: true }).click();
   await mobile.screenshot({ path: 'test-results/mobile-transfer.png', fullPage: true });
@@ -237,7 +247,7 @@ test('本机中转站与远端客户端角色同时运行，远端收发记录�
     expect((await admin('/status')).running).toBeTruthy();
     await remotePage.goto(`${remoteBase}/#pair=${remote.pairingToken}`);
     await remotePage.getByRole('button', { name: '连接中转站', exact: true }).click();
-    await remotePage.getByLabel('设备名称').fill('远端手机');
+    await setBrowserDeviceName(remotePage, '远端手机');
     await remotePage.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await expect(remotePage.locator('main')).toHaveAttribute('data-connected', 'true');
     await remotePage
@@ -299,7 +309,7 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
   );
   await mobile.reload();
   await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
-  await mobile.getByLabel('设备名称').fill('新身份手机');
+  await setBrowserDeviceName(mobile, '新身份手机');
   await mobile.getByLabel('配对码', { exact: true }).fill(after.pairingCode);
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');

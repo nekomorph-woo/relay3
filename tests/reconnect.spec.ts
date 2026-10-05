@@ -1,3 +1,4 @@
+import { setBrowserDeviceName } from './device-ui';
 import {
   test,
   expect,
@@ -155,7 +156,13 @@ test('桌面连接远端后跨重启重连，手机重连不消费数字配对�
     const original = await desktop.evaluate(() =>
       JSON.parse(localStorage.getItem('relay3-session')!),
     );
+    remote.store.db.prepare('UPDATE devices SET name=? WHERE id=?').run('远端旧名称', original.id);
     await restart();
+    await expect
+      .poll(
+        () => remote.store.db.prepare('SELECT name FROM devices WHERE id=?').get(original.id)?.name,
+      )
+      .toBe(boot.deviceName);
     expect(boot.savedHubs[remoteBase].token).toBe(original.token);
     await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
     await desktop.getByRole('button', { name: '断开中转站', exact: true }).click();
@@ -172,7 +179,7 @@ test('桌面连接远端后跨重启重连，手机重连不消费数字配对�
     ).toBe(original.token);
     await mobile.goto(`${remoteBase}/#pair=${remote.pairingCode}`);
     await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
-    await mobile.getByLabel('设备名称').fill('重连手机');
+    await setBrowserDeviceName(mobile, '重连手机');
     await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
     const code = remote.pairingCode;

@@ -1,3 +1,4 @@
+import { setBrowserDeviceName } from './device-ui';
 import {
   test,
   expect,
@@ -40,7 +41,7 @@ async function join(page: Page, name: string) {
   const status = await admin('/status');
   await page.goto(base + '/#pair=' + status.pairingCode);
   await page.getByRole('button', { name: '连接中转站', exact: true }).click();
-  await page.getByLabel('设备名称').fill(name);
+  await setBrowserDeviceName(page, name);
   await page.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(page.locator('main')).toHaveAttribute('data-connected', 'true');
 }

@@ -62,6 +62,11 @@ test('设备弹窗更名更新统一头像，服务端设置独立保存并恢�
     expect(settings.retentionHours).toBe(3);
     expect(settings.receiveDir).toBe(initialSettings.receiveDir);
     expect(settings.cacheDir).toBe(initialSettings.cacheDir);
+    await page.getByRole('button', { name: '连接中转站', exact: true }).click();
+    const pairing = page.getByRole('dialog', { name: '连接中转站', exact: true });
+    await expect(pairing.getByLabel('设备名称', { exact: true })).toHaveValue('名称生成头像测试');
+    await expect(pairing.getByLabel('设备名称', { exact: true })).not.toBeEditable();
+    await pairing.getByRole('button', { name: '关闭', exact: true }).click();
     await page.screenshot({ path: 'test-results/settings-station.png' });
     await page.getByRole('button', { name: '设备身份', exact: true }).click();
     await page.screenshot({ path: 'test-results/settings-identity.png' });

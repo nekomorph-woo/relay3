@@ -1,3 +1,4 @@
+import { setBrowserDeviceName } from './device-ui';
 import {
   test,
   expect,
@@ -103,7 +104,7 @@ test('群聊原文展示、端侧密文、离线授权与手机布局', async ()
   base = `http://127.0.0.1:${status.settings.port}`;
   await mobile.goto(`${base}/#pair=${status.pairingCode}`);
   await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
-  await mobile.getByLabel('设备名称').fill('授权手机');
+  await setBrowserDeviceName(mobile, '授权手机');
   await mobile.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
   await expect(mobile.locator('main')).toHaveAttribute('data-connected', 'true');
   await enter(desktop);
@@ -216,7 +217,7 @@ test('未授权展示、密文汇总分页、组合清理与复制', async () =>
     const status = await admin('/status');
     await other.goto(`${base}/#pair=${status.pairingCode}`);
     await other.getByRole('button', { name: '连接中转站', exact: true }).click();
-    await other.getByLabel('设备名称').fill('未授权设备');
+    await setBrowserDeviceName(other, '未授权设备');
     await other.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
     await enter(other);
     await expect(other.getByRole('dialog', { name: '密文消息汇总' })).toBeVisible();

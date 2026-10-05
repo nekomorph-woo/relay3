@@ -1,3 +1,4 @@
+import { setBrowserDeviceName } from './device-ui';
 import {
   test,
   expect,
@@ -387,7 +388,7 @@ test('手机窄屏自然滚动，群聊与设置操作不会被裁切', async ()
     mobile.on('pageerror', (e) => errors.push(e.message));
     await mobile.goto(`${base}/#pair=${status.pairingToken}`);
     await mobile.getByRole('button', { name: '连接中转站', exact: true }).click();
-    await mobile.getByLabel('设备名称').fill('滚动测试手机');
+    await setBrowserDeviceName(mobile, '滚动测试手机');
     await mobile.getByRole('dialog').getByRole('button', { name: '连接', exact: true }).click();
     let firstChat = true;
     for (const size of [
