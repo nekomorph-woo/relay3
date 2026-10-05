@@ -26,7 +26,7 @@ export function StationSwitcher({
   }, [open]);
   return (
     <>
-      <span className="station-switch-label">当前中转站</span>
+      <span className="station-switch-label">已连接中转站</span>
       <button
         ref={anchor}
         data-station-id={activeId}
@@ -40,10 +40,6 @@ export function StationSwitcher({
           <Tooltip text={current?.session.stationName ?? '选择中转站'}>
             <strong>{current?.session.stationName ?? '选择中转站'}</strong>
           </Tooltip>
-          <small>
-            {current ? status(current.status) : '尚未连接'}
-            {current?.hub?.chatUnread ? ` · ${current.hub.chatUnread} 未读` : ''}
-          </small>
         </span>
         <ChevronDown size={16} />
       </button>
