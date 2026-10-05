@@ -18,6 +18,7 @@ export interface ReceivedFile {
   path: string;
   size: number;
   receivedAt: number;
+  transferId?: string;
   stationId?: string;
   stationName?: string;
 }
@@ -31,7 +32,9 @@ export type Status =
   | 'completed'
   | 'rejected'
   | 'cancelled'
-  | 'failed';
+  | 'failed'
+  | 'expired'
+  | 'receive-expired';
 export interface Device {
   id: string;
   name: string;
@@ -43,6 +46,10 @@ export interface Device {
   ip: string;
 }
 export interface Transfer {
+  fileId?: string;
+  chatMessageId?: number;
+  receiveDeadline?: number | null;
+  lastDownloadedAt?: number | null;
   id: string;
   stationId: string;
   stationName?: string;

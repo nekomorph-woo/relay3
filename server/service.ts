@@ -1,3 +1,5 @@
+import { FileDelivery } from './files';
+import { TaskRegistry } from './tasks';
 import { diagnostic } from './diagnostics';
 import { detectPlatform, normalizePlatform } from '../src/devicePlatform';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -40,6 +42,8 @@ function bearer(r: FastifyRequest) {
 }
 
 export class RelayService {
+  tasks = new TaskRegistry();
+  files: FileDelivery;
   store: Store;
   chat: ChatStore;
   closed = false;
@@ -113,6 +117,7 @@ export class RelayService {
   ) {
     this.store = new Store(dataDir, receiveDir);
     this.chat = new ChatStore(this.store.db);
+    this.files = new FileDelivery(this);
     this.ensureCache();
     this.cleanTimer = setInterval(() => this.cleanup(), 30_000);
     this.cleanTimer.unref();
@@ -134,11 +139,12 @@ export class RelayService {
       mkdirSync(path.join(this.store.settings.cacheDir, p), { recursive: true });
   }
   file(t: Transfer, partial = false) {
-    return path.join(this.store.settings.cacheDir, partial ? 'partial' : 'ready', t.id);
+    return path.join(this.store.settings.cacheDir, partial ? 'partial' : 'ready', t.fileId ?? t.id);
   }
   reconcile() {
     for (const t of this.store.transfers())
       if (
+        !t.fileId &&
         !t.cleanedAt &&
         t.uploaded > 0 &&
         !existsSync(this.file(t)) &&
@@ -166,10 +172,7 @@ export class RelayService {
       chatLatestId: this.chat.latest(),
       chatUnread: this.chat.unread(d.id),
       self: d,
-      devices: this.store
-        .devices()
-        .filter((x) => this.clients.has(x.id))
-        .map((x) => ({ ...x, online: true })),
+      devices: this.store.devices().map((x) => ({ ...x, online: this.clients.has(x.id) })),
       transfers: this.store
         .transfers()
         .filter((t) => t.senderId === d.id || t.recipientId === d.id)
@@ -199,6 +202,7 @@ export class RelayService {
   }
   status() {
     return {
+      tasks: this.tasks.list(),
       running: !!this.hub,
       addresses: this.addresses(),
       pairingToken: this.pairingToken,
@@ -226,6 +230,7 @@ export class RelayService {
   }
   cache() {
     const transfers = new Map(this.store.transfers().map((t) => [t.id, t]));
+    const shared = new Map(this.files.all().map((f) => [f.id, f]));
     const entries: any[] = [];
     for (const folder of ['partial', 'ready'])
       for (const id of readdirSync(path.join(this.store.settings.cacheDir, folder))) {
@@ -233,15 +238,16 @@ export class RelayService {
         const stat = statSync(filename);
         if (!stat.isFile()) continue;
         const t = transfers.get(id);
+        const f = shared.get(id);
         entries.push({
           id,
           folder,
           path: filename,
           bytes: stat.size,
-          name: t?.name ?? `未关联文件 ${id}`,
-          status: t?.status ?? 'orphan',
-          expiresAt: t?.expiresAt ?? null,
-          busy: this.streams.has(id),
+          name: f?.name ?? t?.name ?? `未关联文件 ${id}`,
+          status: f?.state ?? t?.status ?? 'orphan',
+          expiresAt: f?.expiresAt ?? t?.expiresAt ?? null,
+          busy: shared.has(id) ? this.files.busy(id) : this.streams.has(id),
           createdAt: t?.createdAt ?? stat.mtimeMs,
         });
       }
@@ -270,8 +276,10 @@ export class RelayService {
   }
   cleanup(now = Date.now()) {
     if (this.cacheMigration) return;
+    if (this.hub) void this.files.maintenance(now);
     for (const t of this.store.transfers())
       if (
+        !t.fileId &&
         t.status === 'completed' &&
         t.expiresAt !== null &&
         t.expiresAt <= now &&
@@ -346,6 +354,7 @@ export class RelayService {
       if (r.url.startsWith('/admin/') && bearer(r) !== this.adminToken) fail('管理权限不足', 401);
     });
     registerChat(app, this, true);
+    app.get('/admin/tasks', async () => ({ tasks: this.tasks.list() }));
     app.get('/admin/status', async () => this.status());
     app.post('/admin/client/session', async (r) => {
       const b = r.body as SavedConnection;
@@ -483,15 +492,19 @@ export class RelayService {
     app.post('/admin/cache/delete', async (r) => {
       const ids = (r.body as any)?.ids;
       if (!Array.isArray(ids) || ids.length > 1000) fail('清理列表无效');
-      const results = ids.map((id) => {
-        try {
-          this.removeCache(String(id));
-          return { id, ok: true };
-        } catch (e: any) {
-          diagnostic('error', 'cache.delete-failed', { error: e });
-          return { id, ok: false, error: e.message };
-        }
-      });
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            if (this.files.all().some((f) => f.id === String(id)))
+              await this.files.remove(String(id));
+            else this.removeCache(String(id));
+            return { id, ok: true };
+          } catch (e: any) {
+            diagnostic('error', 'cache.delete-failed', { error: e });
+            return { id, ok: false, error: e.message };
+          }
+        }),
+      );
       return { results };
     });
     app.get('/admin/received', async () => ({
@@ -676,7 +689,7 @@ export class RelayService {
       this.store.saveSettings(s);
       // Retention changes apply to completed caches as well.
       for (const t of this.store.transfers())
-        if (t.status === 'completed' && !t.cleanedAt && t.completedAt)
+        if (!t.fileId && t.status === 'completed' && !t.cleanedAt && t.completedAt)
           this.update(t, { expiresAt: t.completedAt + s.retentionHours * 3600_000 });
       this.cleanup();
       this.broadcast();
@@ -697,6 +710,7 @@ export class RelayService {
       done(null, payload),
     );
     registerChat(app, this, false);
+    this.files.register(app);
     app.get('/api/info', async () => ({
       app: 'Relay3',
       name: this.store.settings.stationName,
@@ -905,6 +919,8 @@ export class RelayService {
       return t;
     });
     app.post('/api/transfers/:id/:action', async (r) => {
+      const shared = this.getTransfer((r.params as any).id);
+      if (shared.fileId) return this.files.action(r, shared);
       const d = this.device(r),
         p = r.params as any,
         t = this.getTransfer(p.id);
@@ -991,6 +1007,8 @@ export class RelayService {
       }
     });
     app.get('/api/transfers/:id/download', async (r, reply) => {
+      const shared = this.getTransfer((r.params as any).id);
+      if (shared.fileId) return this.files.download(r, reply, shared);
       const query = r.query as any;
       const d =
         this.store.auth(digest(typeof query.token === 'string' ? query.token : bearer(r))) ??
@@ -1056,6 +1074,7 @@ export class RelayService {
     try {
       await app.listen({ host: '0.0.0.0', port: this.store.settings.port });
       this.hub = app;
+      void this.files.maintenance();
       this.notifyHubChanged();
     } catch (e: any) {
       await app.close();
@@ -1090,7 +1109,9 @@ export class RelayService {
     clearInterval(this.cleanTimer);
     clearInterval(this.heartbeat);
     await this.cacheMigration?.catch(() => {});
+    await this.files.cleaning;
     await this.stopHub(true);
+    await this.files.cleaning;
     await this.control?.close();
     this.closed = true;
     this.store.close();

@@ -20,6 +20,10 @@ export class ChatStore {
     CREATE TABLE IF NOT EXISTS chat_keys (deviceId TEXT PRIMARY KEY, publicKey TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS chat_cursors (deviceId TEXT PRIMARY KEY, messageId INTEGER NOT NULL DEFAULT 0);`);
     const columns = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'kind'))
+      db.exec("ALTER TABLE chat_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
+    if (!columns.some((c) => c.name === 'fileId'))
+      db.exec('ALTER TABLE chat_messages ADD COLUMN fileId TEXT');
     if (!columns.some((c) => c.name === 'senderPlatform'))
       db.exec('ALTER TABLE chat_messages ADD COLUMN senderPlatform TEXT');
     db.exec(
