@@ -3296,12 +3296,41 @@ main.native-page {
   margin-top: var(--space-sm);
   font-size: 11px;
 }
-.about-content {
-  text-align: center;
+.about-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
 }
-.about-content img {
+.about-brand img {
   width: 64px;
   height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+}
+.about-brand p {
+  margin-top: var(--space-xs);
+  font-size: var(--text-sm);
+}
+.about-section + .about-section {
+  border-top: 1px solid var(--color-rule);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+}
+.about-section h3 {
+  margin-bottom: var(--space-sm);
+}
+.about-section ul,
+.about-section ol {
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--text-sm);
+}
+.about-section li + li {
+  margin-top: var(--space-sm);
+}
+.about-section li strong {
+  display: block;
 }
 @media (max-width: 600px) {
   .settings-workspace .settings-panel {

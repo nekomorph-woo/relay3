@@ -828,13 +828,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="version">Relay3 {boot?.version ?? appVersion}</span>
           <div className="sidebar-utilities">
-            <button
-              title="关于 Relay3"
-              aria-label="关于 Relay3"
-              onClick={() =>
-                desktop ? void run(() => window.relay3!.showAbout()) : setModal('about')
-              }
-            >
+            <button title="关于 Relay3" aria-label="关于 Relay3" onClick={() => setModal('about')}>
               <Info size={17} />
             </button>
             <button
@@ -2171,19 +2165,71 @@ export default function App() {
         </Modal>
       )}
       {modal === 'about' && (
-        <Modal title="关于 Relay3" onClose={() => setModal(null)}>
+        <Modal
+          title="关于 Relay3"
+          onClose={() => setModal(null)}
+          actions={
+            <div className="dialog-actions">
+              {desktop ? (
+                <Button onClick={() => void run(() => window.relay3!.openGithub())}>
+                  <Github size={16} /> GitHub 项目
+                </Button>
+              ) : (
+                <a
+                  className="button"
+                  href="https://github.com/nekomorph-woo/relay3"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Github size={16} /> GitHub 项目
+                </a>
+              )}
+              <Button kind="primary" onClick={() => setModal(null)}>
+                知道了
+              </Button>
+            </div>
+          }
+        >
           <div className="about-content">
-            <img src="/relay3.png" alt="Relay3" />
-            <h2>Relay3</h2>
-            <p>版本 {boot?.version ?? appVersion}</p>
-            <p>PC、Mac 与手机之间的局域网文件互传与文字群聊。</p>
-            <a
-              href="https://github.com/nekomorph-woo/relay3"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub 项目
-            </a>
+            <div className="about-brand">
+              <img src="/relay3.png" alt="Relay3 Logo" />
+              <div>
+                <h2>Relay3</h2>
+                <p className="subtle">版本 {boot?.version ?? appVersion}</p>
+                <p>局域网里的文件互传与文字交流。</p>
+              </div>
+            </div>
+            <section className="about-section" aria-label="主要功能">
+              <h3>主要功能</h3>
+              <ul>
+                <li>
+                  <strong>文件互传</strong>电脑与手机互传文件，查看进度与永久保留的收发记录。
+                </li>
+                <li>
+                  <strong>文字群聊</strong>支持普通消息和密文消息，历史保存在中转站。
+                </li>
+                <li>
+                  <strong>多站与管理</strong>PC / Mac
+                  可同时连接多个中转站，管理设备、缓存与已接收文件。
+                </li>
+              </ul>
+            </section>
+            <section className="about-section" aria-label="三步上手">
+              <h3>三步上手</h3>
+              <ol>
+                <li>
+                  <strong>开启中转站</strong>在一台 PC / Mac
+                  的“本机中转站”页面开启服务，让设备连到同一局域网。
+                </li>
+                <li>
+                  <strong>连接设备</strong>
+                  电脑选择附近的中转站并输入配对码，也可使用配对链接；手机扫描二维码。
+                </li>
+                <li>
+                  <strong>开始使用</strong>在“文件传输”选择接收设备和文件，或到“群聊大厅”发送文字。
+                </li>
+              </ol>
+            </section>
           </div>
         </Modal>
       )}

@@ -356,7 +356,7 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
   expect(errors).toEqual([]);
 });
 
-test('独立中转站名称、历史实时探测、侧栏用户与系统关于入口', async () => {
+test('独立中转站名称、历史实时探测、侧栏用户与关于介绍', async () => {
   await desktop.setViewportSize({ width: 1220, height: 840 });
   await desktop.getByRole('button', { name: '设置', exact: true }).click();
   const device = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceName;
@@ -367,18 +367,26 @@ test('独立中转站名称、历史实时探测、侧栏用户与系统关于�
   expect((await admin('/status')).settings.deviceName).toBe(device);
   await expect(desktop.locator('.sidebar > .device-self')).toContainText(device);
   await expect(desktop.locator('.brand')).toHaveCount(0);
-  await app.evaluate(({ app, shell }) => {
-    (globalThis as any).aboutCalls = 0;
+  await app.evaluate(({ shell }) => {
     (globalThis as any).githubUrl = '';
-    app.showAboutPanel = () => {
-      (globalThis as any).aboutCalls++;
-    };
     shell.openExternal = async (url) => {
       (globalThis as any).githubUrl = url;
     };
   });
   await desktop.getByRole('button', { name: '关于 Relay3', exact: true }).click();
-  await expect.poll(() => app.evaluate(() => (globalThis as any).aboutCalls)).toBe(1);
+  const about = desktop.getByRole('dialog', { name: '关于 Relay3' });
+  await expect(about.getByRole('img', { name: 'Relay3 Logo' })).toHaveAttribute(
+    'src',
+    '/relay3.png',
+  );
+  await expect(about.getByRole('region', { name: '主要功能' })).toContainText('文件互传');
+  await expect(about.getByRole('region', { name: '三步上手' })).toContainText('手机扫描二维码');
+  await about.getByRole('button', { name: 'GitHub 项目', exact: true }).click();
+  await expect
+    .poll(() => app.evaluate(() => (globalThis as any).githubUrl))
+    .toBe('https://github.com/nekomorph-woo/relay3');
+  await about.getByRole('button', { name: '知道了', exact: true }).click();
+  await expect(about).toHaveCount(0);
   await desktop.getByRole('button', { name: '项目 GitHub', exact: true }).click();
   await expect
     .poll(() => app.evaluate(() => (globalThis as any).githubUrl))
