@@ -1,0 +1,215 @@
+import {
+  test,
+  expect,
+  _electron,
+  chromium,
+  type ElectronApplication,
+  type Browser,
+  type Page,
+} from '@playwright/test';
+import { mkdtempSync, rmSync, readFileSync, unlinkSync } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import net from 'node:net';
+let app: ElectronApplication,
+  browser: Browser,
+  desktop: Page,
+  phone: Page,
+  offline: Page,
+  dir: string,
+  boot: any,
+  base: string;
+const errors: string[] = [];
+async function admin(route: string, body?: unknown) {
+  return desktop.evaluate(
+    async ({ route, body }) => {
+      const boot = await window.relay3!.bootstrap();
+      const res = await fetch(boot.controlUrl + '/admin' + route, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { Authorization: `Bearer ${boot.adminToken}`, 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error);
+      return r;
+    },
+    { route, body },
+  );
+}
+async function join(page: Page, name: string) {
+  const status = await admin('/status');
+  await page.goto(base + '/#pair=' + status.pairingCode);
+  await page.getByRole('button', { name: '连接中转站', exact: true }).click();
+  await page.getByLabel('设备名称').fill(name);
+  await page.locator('dialog').getByRole('button', { name: '连接', exact: true }).click();
+  await expect(page.locator('main')).toHaveAttribute('data-connected', 'true');
+}
+test.describe.configure({ mode: 'serial' });
+test.beforeAll(async () => {
+  dir = mkdtempSync(path.join(os.tmpdir(), 'relay3-delivery-ui-'));
+  app = await _electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, RELAY3_DATA_DIR: dir },
+  });
+  desktop = await app.firstWindow();
+  desktop.on('pageerror', (e) => errors.push(e.message));
+  boot = await desktop.evaluate(() => window.relay3!.bootstrap());
+  const server = net.createServer();
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((r) => server.close(() => r()));
+  await admin('/settings', {
+    port,
+    receiveDir: path.join(dir, 'received'),
+    stationName: '这是一个很长的中转站名字用于检查切换控件布局',
+  });
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '开启中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
+  await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
+  base = `http://127.0.0.1:${port}`;
+  browser = await chromium.launch({ args: ['--no-proxy-server'] });
+  const context = await browser.newContext({
+    viewport: { width: 375, height: 812 },
+    isMobile: true,
+    hasTouch: true,
+    acceptDownloads: true,
+  });
+  phone = await context.newPage();
+  phone.on('pageerror', (e) => errors.push(e.message));
+  await join(phone, '在线手机');
+  const offContext = await browser.newContext({
+    viewport: { width: 375, height: 812 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  offline = await offContext.newPage();
+  await join(offline, '离线电脑');
+  await offline.close();
+});
+test.afterAll(async () => {
+  await browser?.close();
+  await app?.close();
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
+test('普通多目标离线发送、上传完成后独立接收、服务端任务和长站名', async () => {
+  await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
+  await expect(desktop.locator('.delivery-recipients')).toContainText('离线电脑');
+  const devices = (await admin('/status')).devices;
+  for (const name of ['在线手机', '离线电脑']) {
+    const d = devices.find((d: any) => d.name === name);
+    await desktop.locator(`.delivery-recipients [data-device-id="${d.id}"] input`).check();
+  }
+  await desktop.getByLabel('接收缓冲分钟数').fill('10');
+  await desktop
+    .getByLabel('选择待发送文件')
+    .setInputFiles({
+      name: '多目标.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('多目标共享缓存'),
+    });
+  await desktop.getByRole('button', { name: '发送', exact: true }).click();
+  await expect(desktop.locator('.transfer-row')).toHaveCount(2);
+  await expect.poll(async () => (await admin('/cache')).entries.length).toBe(1);
+  const row = phone.locator('.transfer-row').filter({ hasText: '多目标.txt' });
+  const event = phone.waitForEvent('download');
+  await row.getByRole('button', { name: '接收', exact: true }).click();
+  const download = await event;
+  expect(await download.failure()).toBeNull();
+  await expect(row.getByRole('button', { name: '确认收到' })).toBeVisible();
+  await row.getByRole('button', { name: '确认收到' }).click();
+  await expect
+    .poll(
+      async () =>
+        (await admin('/records')).items.find((t: any) => t.recipientName === '在线手机').status,
+    )
+    .toBe('completed');
+  await desktop.getByRole('button', { name: '本机中转站后台任务' }).click();
+  await expect(desktop.locator('.background-task-popover')).toContainText('多目标.txt');
+  await desktop.screenshot({ path: 'test-results/delivery-tasks.png' });
+  await desktop.getByRole('button', { name: '关闭后台任务' }).click();
+  await desktop.getByRole('button', { name: '切换中转站' }).click();
+  await expect(desktop.getByRole('listbox', { name: '中转站列表' })).toContainText(
+    '这是一个很长的中转站名字',
+  );
+  await desktop.getByRole('option').click();
+  await expect(desktop.locator('.station-switch-trigger strong')).toHaveCSS(
+    'white-space',
+    'nowrap',
+  );
+});
+test('本机文件删除后可重新下载、下载时间更新与缓存清理不影响本机文件', async () => {
+  await phone.getByRole('button', { name: '文件传输', exact: true }).click();
+  await phone.locator(`.delivery-recipients [data-device-id="${boot.deviceId}"] input`).check();
+  await phone
+    .getByLabel('选择待发送文件')
+    .setInputFiles({
+      name: '重新下载.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('重新下载验证'),
+    });
+  await phone.getByRole('button', { name: '发送', exact: true }).click();
+  const row = desktop.locator('.transfer-row').filter({ hasText: '重新下载.txt' });
+  await row.getByRole('button', { name: '接收', exact: true }).click();
+  await expect.poll(async () => (await admin('/received')).entries.length).toBe(1);
+  const first = (await admin('/received')).entries[0];
+  expect(readFileSync(first.path).toString()).toBe('重新下载验证');
+  unlinkSync(first.path);
+  await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
+  const history = desktop.locator('.record-row').filter({ hasText: '重新下载.txt' });
+  await expect(history).toContainText('可重新下载');
+  await history.getByRole('button', { name: '重新下载', exact: true }).click();
+  await expect
+    .poll(async () => (await admin('/received')).entries[0].receivedAt)
+    .toBeGreaterThan(first.receivedAt);
+  await expect(history).toContainText('已下载过');
+  await expect(history.getByRole('button', { name: '打开接收文件所在目录' })).toBeVisible();
+  const record = (await admin('/records')).items.find((t: any) => t.name === '重新下载.txt');
+  await admin('/cache/delete', { ids: [record.fileId] });
+  await expect.poll(async () => (await admin('/received')).entries[0].exists).toBe(true);
+});
+test('群聊文件名加密、手机大厅接收、Emoji本地加载和输入留白', async () => {
+  await desktop.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  await phone.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  await desktop.getByRole('button', { name: '发送文件', exact: true }).click();
+  const modal = desktop.getByRole('dialog', { name: '发送文件', exact: true });
+  await modal
+    .getByLabel('选择群聊文件')
+    .setInputFiles({
+      name: '加密文件名.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('聊天文件'),
+    });
+  const recipient = (await admin('/status')).devices.find((d: any) => d.name === '在线手机');
+  await modal.locator(`[data-device-id="${recipient.id}"] input`).check();
+  await modal.locator('summary').click();
+  await modal.getByLabel('文件公开备注').fill('公开文件说明');
+  await modal.getByRole('button', { name: '发送文件', exact: true }).click();
+  await expect(modal).toHaveCount(0);
+  const message = phone.locator('.bbs-message').filter({ hasText: '加密文件名.txt' });
+  await expect(message).toContainText('公开文件说明');
+  const event = phone.waitForEvent('download');
+  await message.getByRole('button', { name: '接收', exact: true }).click();
+  await event;
+  await message.getByRole('button', { name: '确认收到' }).click();
+  await expect(message).toContainText('已下载过');
+  await desktop.getByLabel('文字消息').fill('你好 😀 <b>原文</b>');
+  await desktop.getByRole('button', { name: '发送文字', exact: true }).click();
+  await expect(
+    phone.locator('.bbs-message').filter({ hasText: '你好' }).locator('.inline-emoji'),
+  ).toHaveCount(1);
+  await expect(phone.locator('.bbs-message').filter({ hasText: '你好' })).toContainText(
+    '<b>原文</b>',
+  );
+  await desktop.getByRole('button', { name: '选择表情' }).click();
+  await expect(desktop.locator('em-emoji-picker')).toBeVisible();
+  await desktop.screenshot({ path: 'test-results/delivery-emoji.png' });
+  await desktop.getByRole('button', { name: '关闭表情' }).click();
+  await desktop.getByRole('button', { name: '发送密文', exact: true }).click();
+  const textarea = desktop.getByRole('dialog', { name: '发送密文' }).getByLabel('文字消息');
+  await expect(textarea).toHaveCSS('padding-left', '12px');
+  await desktop.screenshot({ path: 'test-results/delivery-input.png' });
+  await desktop.getByRole('button', { name: '关闭密文输入' }).click();
+  expect(errors).toEqual([]);
+});

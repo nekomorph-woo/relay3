@@ -1,3 +1,11 @@
+import { EmojiButton } from '../emoji/EmojiButton';
+import { EmojiText } from '../emoji/EmojiText';
+import { FileTask, UnknownFile, type LocalFile } from '../components/FileTask';
+import { Recipients, ReceiveBuffer } from '../components/Recipients';
+import { deliverFile } from '../fileDelivery';
+import { FileUp, File } from 'lucide-react';
+import type { Transfer } from '../api';
+import type { SharedFile } from '../../server/files';
 import { ScrollArea } from '../components/ScrollArea';
 import { reportException } from '../diagnostics';
 import { useEffect, useRef, useState } from 'react';
@@ -38,6 +46,9 @@ interface MessagePage {
 }
 export function ChatHall({
   session,
+  localFiles = [],
+  onFilesChanged,
+  transfers,
   connected,
   visible,
   latestId,
@@ -47,6 +58,9 @@ export function ChatHall({
   management,
   preserveView = false,
 }: {
+  localFiles?: LocalFile[];
+  onFilesChanged: () => void;
+  transfers: Transfer[];
   session: Session;
   connected: boolean;
   visible: boolean;
@@ -64,6 +78,11 @@ export function ChatHall({
   const [plainText, setPlainText] = useState('');
   const [text, setText] = useState(''),
     [mode, setMode] = useState<'plain' | 'encrypted'>('plain');
+  const [fileComposer, setFileComposer] = useState(false),
+    [chatFiles, setChatFiles] = useState<File[]>([]),
+    [fileRecipients, setFileRecipients] = useState<string[]>([]),
+    [fileBuffer, setFileBuffer] = useState(stored('relay3-receive-buffer', 1440));
+  const [fileStates, setFileStates] = useState<Record<string, SharedFile>>({});
   const [remark, setRemark] = useState(''),
     [remarkStyle, setRemarkStyle] = useState<'hint' | 'note' | 'clue'>('note');
   const [selected, setSelected] = useState<string[]>([session.id]),
@@ -89,6 +108,8 @@ export function ChatHall({
     entry = useRef(false),
     sequence = useRef(0),
     phrases = useRef(new Map<number, string>());
+  const plainInput = useRef<HTMLTextAreaElement>(null),
+    encryptedInput = useRef<HTMLTextAreaElement>(null);
   const draftId = useRef(uuid());
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
@@ -106,11 +127,78 @@ export function ChatHall({
             senderId: m.senderId,
             remark: m.remark,
             remarkStyle: m.remarkStyle,
+            ...(m.kind === 'file' ? { purpose: 'file-name' as const, fileId: m.fileId! } : {}),
           })
         : null;
     if (content !== null) return { text: content, open: true };
+    if (m.kind === 'file') return { text: '未知文件', open: false };
     if (!phrases.current.has(m.id)) phrases.current.set(m.id, hiddenPhrase());
     return { text: phrases.current.get(m.id)!, open: false };
+  }
+  useEffect(() => {
+    if (!connected || !visible) return;
+    let dead = false;
+    const ids = [
+      ...new Set(rows.filter((m) => m.kind === 'file' && m.fileId).map((m) => m.fileId!)),
+    ];
+    void Promise.all(
+      ids.map(
+        async (id) =>
+          [id, await request<SharedFile>(session.base, session.token, `/api/files/${id}`)] as const,
+      ),
+    )
+      .then((entries) => {
+        if (!dead) setFileStates(Object.fromEntries(entries));
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [rows, transfers, connected, visible, session.token]);
+  async function sendFiles() {
+    if (!identity || !info || !chatFiles.length || !fileRecipients.length) return;
+    setBusy(true);
+    setError('');
+    try {
+      const recipients = [session.id, ...fileRecipients].map((id) => {
+        const d = info.devices.find((d) => d.id === id);
+        if (!d?.publicKey) throw new Error('设备公钥不可用，请刷新列表');
+        return { id, publicKey: d.publicKey };
+      });
+      save('relay3-receive-buffer', fileBuffer);
+      for (const file of chatFiles) {
+        const id = uuid();
+        const envelope = encryptMessage(
+          file.name,
+          recipients,
+          {
+            stationId: session.stationId,
+            senderId: session.id,
+            remark,
+            remarkStyle,
+            purpose: 'file-name',
+            fileId: id,
+          },
+          id,
+        );
+        await deliverFile(session, file, fileRecipients, fileBuffer, {
+          id,
+          envelope,
+          remark,
+          remarkStyle,
+        });
+        setChatFiles((old) => old.filter((f) => f !== file));
+      }
+      setFileComposer(false);
+      setRemark('');
+      onFilesChanged();
+      setTracking(true);
+      await load('', 'end', true);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
   async function copyMessage(m: ChatMessage) {
     try {
@@ -340,12 +428,17 @@ export function ChatHall({
               >
                 <LockKeyhole size={17} /> 发送密文
               </button>
+              <button type="button" onClick={() => setFileComposer(true)}>
+                <FileUp size={17} />
+                发送文件
+              </button>
               <span className="subtle">文字原样展示</span>
             </div>
           )}
           <label className="chat-message-label">
             <span className="chat-input-label">文字消息</span>
             <textarea
+              ref={encrypted ? encryptedInput : plainInput}
               aria-label="文字消息"
               value={encrypted ? text : plainText}
               onChange={(e) => {
@@ -439,6 +532,22 @@ export function ChatHall({
           )}
         </div>
         <div className="chat-send-row">
+          <EmojiButton
+            onSelect={(emoji) => {
+              const el = (encrypted ? encryptedInput : plainInput).current;
+              const value = encrypted ? text : plainText;
+              const start = el?.selectionStart ?? value.length,
+                end = el?.selectionEnd ?? start;
+              (encrypted ? setText : setPlainText)(
+                value.slice(0, start) + emoji + value.slice(end),
+              );
+              draftId.current = uuid();
+              requestAnimationFrame(() => {
+                el?.focus();
+                el?.setSelectionRange(start + emoji.length, start + emoji.length);
+              });
+            }}
+          />
           <small
             className={[...(encrypted ? text : plainText)].length > 10000 ? 'error-text' : 'subtle'}
           >
@@ -580,7 +689,41 @@ export function ChatHall({
               </button>
             </aside>
           )}
-          <pre className={!value.open ? 'locked-text' : ''}>{value.text}</pre>
+          {m.kind === 'file' ? (
+            <div className="chat-file-message">
+              {value.open ? (
+                <>
+                  <strong>
+                    <File size={18} />
+                    {value.text}
+                  </strong>
+                  {transfers
+                    .filter((t) => t.fileId === m.fileId)
+                    .map((t) => (
+                      <div key={t.id}>
+                        <small>
+                          {t.senderId === session.id ? `发送给 ${t.recipientName}` : ''}
+                        </small>
+                        <FileTask
+                          t={t}
+                          session={session}
+                          localFiles={localFiles}
+                          name={value.text}
+                          onUpdated={onFilesChanged}
+                          onError={setError}
+                        />
+                      </div>
+                    ))}
+                </>
+              ) : (
+                <UnknownFile cleaned={!!fileStates[m.fileId!]?.cleanedAt} />
+              )}
+            </div>
+          ) : (
+            <pre className={!value.open ? 'locked-text' : ''}>
+              <EmojiText text={value.text} />
+            </pre>
+          )}
           {copied === m.id && (
             <small role="status">{value.open ? '已复制正文' : '已复制实际密文'}</small>
           )}
@@ -709,6 +852,135 @@ export function ChatHall({
         </section>
         <aside className="chat-info chat-info-desktop">{renderInfo()}</aside>
       </div>
+      {fileComposer && visible && (
+        <ChatDialog
+          label="发送文件"
+          onClose={() => {
+            if (!busy) setFileComposer(false);
+          }}
+        >
+          <section className="chat-modal panel encrypted-compose-modal">
+            <div className="dialog-head">
+              <h2>
+                <FileUp size={20} />
+                发送文件
+              </h2>
+              <button
+                aria-label="关闭文件发送"
+                disabled={busy}
+                onClick={() => setFileComposer(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="subtle">文件名仅选中设备可解密，文件上传后可离线等待接收。</p>
+            {error && (
+              <p className="error-text" role="alert">
+                {error}
+              </p>
+            )}
+            <form
+              className="chat-composer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendFiles();
+              }}
+            >
+              <div className="chat-compose-body">
+                <label
+                  className="dropzone"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setChatFiles((old) => [...old, ...Array.from(e.dataTransfer.files)]);
+                  }}
+                >
+                  <FileUp size={26} />
+                  <strong>选择文件，或拖到这里</strong>
+                  <span>可选择多个文件</span>
+                  <input
+                    aria-label="选择群聊文件"
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      setChatFiles((old) => [...old, ...Array.from(e.target.files ?? [])]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <div className="chat-file-selection">
+                  {chatFiles.map((f, i) => (
+                    <div className="file-line" key={i}>
+                      <File size={16} />
+                      <span>{f.name}</span>
+                      <button
+                        type="button"
+                        aria-label={`移除 ${f.name}`}
+                        onClick={() => setChatFiles((old) => old.filter((_, j) => i !== j))}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <Recipients
+                  devices={devices.filter((d) => d.id !== session.id)}
+                  selected={fileRecipients}
+                  onChange={setFileRecipients}
+                  encrypted
+                  disabled={busy}
+                />
+                <ReceiveBuffer value={fileBuffer} onChange={setFileBuffer} />
+                <details className="chat-remark-editor">
+                  <summary>公开备注（可选）</summary>
+                  <div className="chat-remark-input">
+                    <label>
+                      备注样式
+                      <select
+                        value={remarkStyle}
+                        onChange={(e) => setRemarkStyle(e.target.value as any)}
+                      >
+                        <option value="hint">提示</option>
+                        <option value="note">说明</option>
+                        <option value="clue">线索</option>
+                      </select>
+                    </label>
+                    <label>
+                      公开备注
+                      <textarea
+                        aria-label="文件公开备注"
+                        value={remark}
+                        maxLength={1000}
+                        onChange={(e) => setRemark(e.target.value)}
+                        placeholder="所有设备可见，不会授予解密权限"
+                      />
+                    </label>
+                  </div>
+                </details>
+              </div>
+              <div className="chat-send-row">
+                <small>
+                  {chatFiles.length} 个文件 · {fileRecipients.length} 台接收设备
+                </small>
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={
+                    busy ||
+                    !connected ||
+                    !chatFiles.length ||
+                    !fileRecipients.length ||
+                    fileBuffer < 10 ||
+                    fileBuffer > 1440
+                  }
+                >
+                  {busy ? '上传中' : '发送文件'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </ChatDialog>
+      )}
       {mode === 'encrypted' && visible && (
         <ChatDialog
           label="发送密文"

@@ -297,7 +297,7 @@ export class Store {
   clearRecords() {
     let deleted = 0;
     for (const t of this.transfers())
-      if (!activeStatuses.includes(t.status) && (t.cleanedAt || t.uploaded === 0)) {
+      if (!activeStatuses.includes(t.status) && (t.cleanedAt || (!t.fileId && t.uploaded === 0))) {
         this.db.prepare('DELETE FROM transfers WHERE id=?').run(t.id);
         deleted++;
       }

@@ -22,6 +22,7 @@ export interface Bootstrap {
   clientView?: { stationId?: string; page?: string };
 }
 export interface AdminState {
+  tasks: import('../server/tasks').BackgroundTask[];
   running: boolean;
   addresses: string[];
   pairingToken: string;
@@ -85,6 +86,17 @@ declare global {
       bootstrap(): Promise<Bootstrap>;
       pickDirectory(): Promise<string | null>;
       openDirectory(kind: string): Promise<boolean>;
+      rememberSource(input: { stationId: string; fileId: string; file: File }): Promise<boolean>;
+      canRevealFile(input: {
+        kind: 'received' | 'cache' | 'source';
+        id: string;
+        stationId?: string;
+      }): Promise<boolean>;
+      revealFile(input: {
+        kind: 'received' | 'cache' | 'source';
+        id: string;
+        stationId?: string;
+      }): Promise<boolean>;
       download(input: {
         base: string;
         token: string;
@@ -157,7 +169,11 @@ export const duration = (n: number | null) =>
         ? `${(n / 1000).toFixed(1)} 秒`
         : `${Math.floor(n / 60_000)} 分 ${Math.round((n % 60_000) / 1000)} 秒`;
 export const labels: Record<string, string> = {
-  pending: '等待确认',
+  pending: '待接收',
+  expired: '超时未处理',
+  'receive-expired': '接收超时未完成',
+  waiting: '等待上传',
+  cleaned: '中转缓存已清理',
   accepted: '等待上传',
   uploading: '上传中',
   ready: '等待接收',

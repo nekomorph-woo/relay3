@@ -318,7 +318,7 @@ export class RelayService {
       reply
         .header(
           'Content-Security-Policy',
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src http: ws:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src http: ws:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
         )
         .header('X-Content-Type-Options', 'nosniff')
         .header('Referrer-Policy', 'no-referrer')

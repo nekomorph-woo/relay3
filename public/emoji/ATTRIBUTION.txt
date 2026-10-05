@@ -1,0 +1,5 @@
+Emoji picker: Emoji Mart / Missive (MIT).
+Emoji data/sprites: emoji-datasource-twitter 15.0.1.
+Twemoji graphics: Twitter and contributors, CC-BY 4.0.
+https://github.com/twitter/twemoji
+https://creativecommons.org/licenses/by/4.0/

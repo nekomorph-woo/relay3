@@ -20,6 +20,7 @@ export interface SharedFile {
   uploadedAt: number | null;
   uploaded: number;
   sha256: string | null;
+  expectedSha256?: string;
   bufferMinutes: number;
   receiveDeadline: number | null;
   expiresAt: number | null;
@@ -260,6 +261,7 @@ export class FileDelivery {
         fail('文件名无效');
       const f: SharedFile = {
         id: b.id,
+        expectedSha256: b.expectedSha256,
         senderId: d.id,
         senderName: d.name,
         name,
@@ -387,6 +389,8 @@ export class FileDelivery {
       const now = Date.now(),
         receiveDeadline = now + f.bufferMinutes * 60000,
         expiresAt = receiveDeadline + this.service.store.settings.retentionHours * 3600000;
+      const checksum = hash.digest('hex');
+      if (f.expectedSha256 && checksum !== f.expectedSha256) throw new Error('文件与原任务不一致');
       renameSync(this.filename(f, true), this.filename(f));
       const next = {
         ...f,
@@ -395,7 +399,7 @@ export class FileDelivery {
         uploadedAt: now,
         receiveDeadline,
         expiresAt,
-        sha256: hash.digest('hex'),
+        sha256: checksum,
       };
       this.save(next);
       this.patchTransfers(f.id, {

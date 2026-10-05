@@ -246,6 +246,46 @@ else {
         if (error) throw new Error(error);
         return true;
       });
+      handler('remember-source', (input: { stationId: string; fileId: string; path: string }) => {
+        if (
+          !/^[a-zA-Z0-9-]{16,80}$/.test(input.fileId) ||
+          !/^[a-zA-Z0-9-]{16,80}$/.test(input.stationId) ||
+          !path.isAbsolute(input.path)
+        )
+          throw new Error('源文件无效');
+        service.store.db
+          .prepare('INSERT OR REPLACE INTO settings VALUES (?,?)')
+          .run(`source:${input.stationId}:${input.fileId}`, JSON.stringify(input.path));
+        return true;
+      });
+      function resolveFile(input: {
+        kind: 'received' | 'cache' | 'source';
+        id: string;
+        stationId?: string;
+      }) {
+        let target: string | undefined;
+        if (input.kind === 'received')
+          target = service.store.received().find((f) => f.id === input.id)?.path;
+        if (input.kind === 'cache')
+          target = service.cache().entries.find((f) => f.id === input.id)?.path;
+        if (input.kind === 'source') {
+          const row = service.store.db
+            .prepare('SELECT value FROM settings WHERE key=?')
+            .get(`source:${input.stationId}:${input.id}`) as { value: string } | undefined;
+          if (row) target = JSON.parse(row.value);
+        }
+        return target;
+      }
+      handler('can-reveal-file', (input: Parameters<typeof resolveFile>[0]) => {
+        const target = resolveFile(input);
+        return !!target && existsSync(target);
+      });
+      handler('reveal-file', (input: Parameters<typeof resolveFile>[0]) => {
+        const target = resolveFile(input);
+        if (!target || !existsSync(target)) throw new Error('文件已删除、移动或清理');
+        shell.showItemInFolder(target);
+        return true;
+      });
       handler('cancel-download', (id: string, stationId?: string) => {
         if (stationId) downloads.get(`${stationId}:${id}`)?.abort();
         else
@@ -346,7 +386,8 @@ else {
               }
             }
             service.store.saveReceived({
-              id: randomUUID(),
+              id: `${stationId ?? base}:${input.id}`,
+              transferId: input.id,
               name: path.basename(destination),
               path: destination,
               size: bytes,

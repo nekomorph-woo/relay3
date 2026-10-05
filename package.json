@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run build:backend && node scripts/dev.mjs",
     "build:backend": "tsup && node scripts/preload.mjs",
-    "build": "tsc --noEmit && vite build && npm run build:backend",
+    "build": "node scripts/emojis.mjs && tsc --noEmit && vite build && npm run build:backend",
     "start": "electron .",
     "serve": "npm run build && node dist-electron/index.js",
     "test": "npm run build:backend && node --test tests/*.test.mjs",
@@ -31,6 +31,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@emoji-mart/data": "^1.2.1",
     "@noble/ciphers": "^2.4.0",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
@@ -44,6 +45,8 @@
     "avatarka": "4.0.0",
     "electron": "44.5.1",
     "electron-builder": "^26.0.12",
+    "emoji-datasource-twitter": "^15.0.1",
+    "emoji-mart": "^5.6.0",
     "fflate": "0.8.2",
     "lucide-react": "^0.468.0",
     "png-to-ico": "^3.0.1",
