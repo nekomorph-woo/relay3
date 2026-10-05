@@ -1,3 +1,4 @@
+import { ScrollArea } from './components/ScrollArea';
 import { version as appVersion } from '../package.json';
 import { reportException } from './diagnostics';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -110,6 +111,7 @@ function Button({
   kind = '',
   title,
   type = 'button',
+  form,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -117,10 +119,12 @@ function Button({
   kind?: string;
   title?: string;
   type?: 'button' | 'submit';
+  form?: string;
 }) {
   return (
     <button
       type={type}
+      form={form}
       title={title}
       className={`button ${kind}`}
       onClick={onClick}
@@ -133,10 +137,12 @@ function Button({
 function Modal({
   title,
   children,
+  actions,
   onClose,
 }: {
   title: string;
   children: ReactNode;
+  actions?: ReactNode;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -148,6 +154,8 @@ function Modal({
   return (
     <dialog
       ref={ref}
+      className="app-dialog"
+      aria-label={title}
       onCancel={onClose}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
@@ -159,7 +167,8 @@ function Modal({
           <X size={18} />
         </Button>
       </div>
-      {children}
+      <div className="dialog-body">{children}</div>
+      {actions && <div className="dialog-footer">{actions}</div>}
     </dialog>
   );
 }
@@ -190,6 +199,7 @@ export default function App() {
     | 'resetIdentity'
     | 'removeDevice'
     | 'copy'
+    | 'storageLocations'
     | 'disconnectStation'
     | 'forgetStation'
   >(null);
@@ -256,9 +266,12 @@ export default function App() {
     [total, setTotal] = useState(0),
     [offset, setOffset] = useState(0),
     [search, setSearch] = useState('');
+  const [historyLoadedKey, setHistoryLoadedKey] = useState('');
+
   const [qr, setQr] = useState(''),
     [address, setAddress] = useState(''),
     [filter, setFilter] = useState('all');
+  const historyScrollKey = `history:${historyStation}:${filter}:${search}:${offset}`;
   const [form, setForm] = useState({
     deviceName: '',
     stationName: '',
@@ -444,6 +457,7 @@ export default function App() {
             : { items: [], total: 0 };
         if (!dead) {
           setRecords(result.items);
+          setHistoryLoadedKey(historyScrollKey);
           setTotal(result.total);
           setHistoryStations(result.stations ?? []);
         }
@@ -935,131 +949,141 @@ export default function App() {
                       {transfers.length ? `${transfers.length} 项` : '0 项'}
                     </span>
                   </div>
-                  {transfers.length ? (
-                    transfers.map((t) => {
-                      const incoming = t.recipientId === session?.id;
-                      const amount =
-                        t.status === 'uploading'
-                          ? Math.max(t.uploaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
-                          : t.status === 'downloading'
-                            ? Math.max(t.downloaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
-                            : t.uploaded;
-                      const percent = t.size
-                        ? Math.min(100, Math.round((amount / t.size) * 100))
-                        : t.status === 'pending'
-                          ? 0
-                          : 100;
-                      return (
-                        <article className="transfer-row" key={t.id}>
-                          <div className={`direction ${incoming ? 'incoming' : ''}`}>
-                            {incoming ? <ArrowDownLeft size={23} /> : <ArrowUpRight size={23} />}
-                          </div>
-                          <div className="transfer-details">
-                            <strong>{t.name}</strong>
-                            <p>
-                              {sizes(t.size)} ·{' '}
-                              <span className="device-name-tag">
-                                {t.senderName}
-                                <DeviceTag
-                                  platform={
-                                    t.senderPlatform ??
-                                    hub?.devices.find((d) => d.id === t.senderId)?.platform
-                                  }
-                                />
-                              </span>{' '}
-                              →{' '}
-                              <span className="device-name-tag">
-                                {t.recipientName}
-                                <DeviceTag
-                                  platform={
-                                    t.recipientPlatform ??
-                                    hub?.devices.find((d) => d.id === t.recipientId)?.platform
-                                  }
-                                />
-                              </span>
-                            </p>
-                            {['uploading', 'downloading'].includes(t.status) && (
-                              <>
-                                <progress
-                                  value={percent}
-                                  max="100"
-                                  aria-label={`${t.name} 传输进度`}
-                                />
-                                <small>
-                                  {percent}% · {sizes(amount)} / {sizes(t.size)}
-                                </small>
-                              </>
-                            )}
-                            {t.error && <small className="error-text">{t.error}</small>}
-                            {savedPaths[`${session?.stationId}:${t.id}`] && (
-                              <small>{savedPaths[`${session?.stationId}:${t.id}`]}</small>
-                            )}
-                          </div>
-                          <div className="transfer-actions">
-                            <Badge status={t.status} />
-                            {incoming && t.status === 'pending' && (
-                              <>
+                  <ScrollArea
+                    memoryKey={`transfer:${multi.activeId}`}
+                    className="transfer-items"
+                    tabIndex={0}
+                    aria-label="当前传输列表"
+                  >
+                    {transfers.length ? (
+                      transfers.map((t) => {
+                        const incoming = t.recipientId === session?.id;
+                        const amount =
+                          t.status === 'uploading'
+                            ? Math.max(t.uploaded, progress[`${session?.stationId}:${t.id}`] ?? 0)
+                            : t.status === 'downloading'
+                              ? Math.max(
+                                  t.downloaded,
+                                  progress[`${session?.stationId}:${t.id}`] ?? 0,
+                                )
+                              : t.uploaded;
+                        const percent = t.size
+                          ? Math.min(100, Math.round((amount / t.size) * 100))
+                          : t.status === 'pending'
+                            ? 0
+                            : 100;
+                        return (
+                          <article className="transfer-row" key={t.id} data-scroll-id={t.id}>
+                            <div className={`direction ${incoming ? 'incoming' : ''}`}>
+                              {incoming ? <ArrowDownLeft size={23} /> : <ArrowUpRight size={23} />}
+                            </div>
+                            <div className="transfer-details">
+                              <strong>{t.name}</strong>
+                              <p>
+                                {sizes(t.size)} ·{' '}
+                                <span className="device-name-tag">
+                                  {t.senderName}
+                                  <DeviceTag
+                                    platform={
+                                      t.senderPlatform ??
+                                      hub?.devices.find((d) => d.id === t.senderId)?.platform
+                                    }
+                                  />
+                                </span>{' '}
+                                →{' '}
+                                <span className="device-name-tag">
+                                  {t.recipientName}
+                                  <DeviceTag
+                                    platform={
+                                      t.recipientPlatform ??
+                                      hub?.devices.find((d) => d.id === t.recipientId)?.platform
+                                    }
+                                  />
+                                </span>
+                              </p>
+                              {['uploading', 'downloading'].includes(t.status) && (
+                                <>
+                                  <progress
+                                    value={percent}
+                                    max="100"
+                                    aria-label={`${t.name} 传输进度`}
+                                  />
+                                  <small>
+                                    {percent}% · {sizes(amount)} / {sizes(t.size)}
+                                  </small>
+                                </>
+                              )}
+                              {t.error && <small className="error-text">{t.error}</small>}
+                              {savedPaths[`${session?.stationId}:${t.id}`] && (
+                                <small>{savedPaths[`${session?.stationId}:${t.id}`]}</small>
+                              )}
+                            </div>
+                            <div className="transfer-actions">
+                              <Badge status={t.status} />
+                              {incoming && t.status === 'pending' && (
+                                <>
+                                  <Button
+                                    kind="primary"
+                                    disabled={busy}
+                                    onClick={() => void run(() => action(t, 'accept'))}
+                                  >
+                                    <Check size={16} />
+                                    接收
+                                  </Button>
+                                  <Button
+                                    disabled={busy}
+                                    onClick={() => void run(() => action(t, 'reject'))}
+                                  >
+                                    拒绝
+                                  </Button>
+                                </>
+                              )}
+                              {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
                                 <Button
                                   kind="primary"
-                                  disabled={busy}
-                                  onClick={() => void run(() => action(t, 'accept'))}
+                                  disabled={
+                                    busy || receivingKeys.includes(`${session?.stationId}:${t.id}`)
+                                  }
+                                  onClick={() =>
+                                    void receive(t).catch((error) => {
+                                      reportException('download.failed', error, {
+                                        stationId: session?.stationId,
+                                        base: session?.base,
+                                      });
+                                      inform(error.message, true);
+                                    })
+                                  }
                                 >
-                                  <Check size={16} />
-                                  接收
+                                  <Download size={16} />
+                                  {t.status === 'ready' ? '下载文件' : '重新下载'}
                                 </Button>
+                              )}
+                              {incoming && t.status === 'awaiting-confirm' && (
                                 <Button
                                   disabled={busy}
-                                  onClick={() => void run(() => action(t, 'reject'))}
+                                  onClick={() => void run(() => action(t, 'complete'))}
                                 >
-                                  拒绝
+                                  <Check size={16} />
+                                  确认收到
                                 </Button>
-                              </>
-                            )}
-                            {incoming && ['ready', 'awaiting-confirm'].includes(t.status) && (
+                              )}
                               <Button
-                                kind="primary"
-                                disabled={
-                                  busy || receivingKeys.includes(`${session?.stationId}:${t.id}`)
-                                }
-                                onClick={() =>
-                                  void receive(t).catch((error) => {
-                                    reportException('download.failed', error, {
-                                      stationId: session?.stationId,
-                                      base: session?.base,
-                                    });
-                                    inform(error.message, true);
-                                  })
-                                }
+                                disabled={busy && t.status !== 'downloading'}
+                                title="取消传输"
+                                onClick={() => void run(() => action(t, 'cancel'))}
                               >
-                                <Download size={16} />
-                                {t.status === 'ready' ? '下载文件' : '重新下载'}
+                                <X size={16} />
                               </Button>
-                            )}
-                            {incoming && t.status === 'awaiting-confirm' && (
-                              <Button
-                                disabled={busy}
-                                onClick={() => void run(() => action(t, 'complete'))}
-                              >
-                                <Check size={16} />
-                                确认收到
-                              </Button>
-                            )}
-                            <Button
-                              disabled={busy && t.status !== 'downloading'}
-                              title="取消传输"
-                              onClick={() => void run(() => action(t, 'cancel'))}
-                            >
-                              <X size={16} />
-                            </Button>
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <Empty icon={<ArrowLeftRight size={28} />} title="还没有进行中的传输">
-                      {session ? '选择文件发送，或等待接收。' : '连接中转站后即可收发文件。'}
-                    </Empty>
-                  )}
+                            </div>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <Empty icon={<ArrowLeftRight size={28} />} title="还没有进行中的传输">
+                        {session ? '选择文件发送，或等待接收。' : '连接中转站后即可收发文件。'}
+                      </Empty>
+                    )}
+                  </ScrollArea>
                 </section>{' '}
                 {session && (
                   <section className="panel composer">
@@ -1103,23 +1127,30 @@ export default function App() {
                         }}
                       />
                     </label>
-                    {files.length > 0 && (
-                      <div className="selected-files">
-                        {files.map((f, i) => (
-                          <div className="file-line" key={i}>
-                            <File size={17} />
-                            <span>{f.name}</span>
-                            <small>{sizes(f.size)}</small>
-                            <button
-                              aria-label={`移除 ${f.name}`}
-                              onClick={() => setFiles(files.filter((_, j) => i !== j))}
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <ScrollArea
+                      memoryKey={`selected-files:${multi.activeId}`}
+                      className="selected-files"
+                      tabIndex={0}
+                      aria-label="待发送文件列表"
+                    >
+                      {files.map((f, i) => (
+                        <div
+                          className="file-line"
+                          key={i}
+                          data-scroll-id={`${f.name}:${f.lastModified}:${i}`}
+                        >
+                          <File size={17} />
+                          <span>{f.name}</span>
+                          <small>{sizes(f.size)}</small>
+                          <button
+                            aria-label={`移除 ${f.name}`}
+                            onClick={() => setFiles(files.filter((_, j) => i !== j))}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </ScrollArea>
                     <div className="send-footer">
                       <span className="subtle">
                         {files.length
@@ -1147,7 +1178,13 @@ export default function App() {
           )}
           {page === 'station' && admin && (
             <>
-              <section className="panel station-panel">
+              <ScrollArea
+                as="section"
+                memoryKey="local-station"
+                className="panel station-panel"
+                tabIndex={0}
+                aria-label="本机中转站信息"
+              >
                 <div className="station-main">
                   <div className="section-head">
                     <span className="station-icon">
@@ -1276,7 +1313,7 @@ export default function App() {
                     </Empty>
                   )}
                 </div>
-              </section>
+              </ScrollArea>
               <div className="note">
                 <Wifi size={18} />
                 <p>请允许防火墙接受连接；访客网络可能隔离设备。</p>
@@ -1294,9 +1331,14 @@ export default function App() {
                   </Button>
                 </div>
                 {admin.devices.length ? (
-                  <div className="device-list">
+                  <ScrollArea
+                    memoryKey="local-devices"
+                    className="device-list"
+                    tabIndex={0}
+                    aria-label="设备列表"
+                  >
                     {admin.devices.map((d) => (
-                      <div className="device-record" key={d.id}>
+                      <div className="device-record" key={d.id} data-scroll-id={d.id}>
                         <DeviceAvatar id={d.id} name={d.name} size={40} />
                         <div>
                           <strong>
@@ -1336,7 +1378,7 @@ export default function App() {
                         </div>
                       </div>
                     ))}
-                  </div>
+                  </ScrollArea>
                 ) : (
                   <Empty icon={<Monitor size={28} />} title="还没有连接记录">
                     开启中转站，让其他设备扫码连接。
@@ -1349,9 +1391,14 @@ export default function App() {
                   <span className="subtle">最近 500 次</span>
                 </div>
                 {admin.connections.length ? (
-                  <div className="timeline">
+                  <ScrollArea
+                    memoryKey="local-timeline"
+                    className="timeline"
+                    tabIndex={0}
+                    aria-label="连接时间线"
+                  >
                     {admin.connections.map((c) => (
-                      <div key={c.id}>
+                      <div key={c.id} data-scroll-id={c.id}>
                         <span className="dot" />
                         <strong>
                           {c.name}
@@ -1367,7 +1414,7 @@ export default function App() {
                         </p>
                       </div>
                     ))}
-                  </div>
+                  </ScrollArea>
                 ) : (
                   <p className="subtle">设备连接与断开后会自动记录。</p>
                 )}
@@ -1433,7 +1480,15 @@ export default function App() {
                   </Button>
                 )}
               </div>
-              <section className="panel records-panel">
+              <ScrollArea
+                as="section"
+                memoryKey={historyScrollKey}
+                ready={historyLoadedKey === historyScrollKey}
+                resetOnKeyChange
+                className="panel records-panel"
+                tabIndex={0}
+                aria-label="收发记录列表"
+              >
                 {historyRows.length ? (
                   <div className="record-table">
                     <div className="record-header">
@@ -1443,7 +1498,11 @@ export default function App() {
                       <span>状态</span>
                     </div>
                     {historyRows.map((t) => (
-                      <div className="record-row" key={`${t.stationId}:${t.id}`}>
+                      <div
+                        className="record-row"
+                        key={`${t.stationId}:${t.id}`}
+                        data-scroll-id={`${t.stationId}:${t.id}`}
+                      >
                         <div>
                           <strong>{t.name}</strong>
                           <small>{sizes(t.size)}</small>
@@ -1495,7 +1554,7 @@ export default function App() {
                     收发记录永久保留。
                   </Empty>
                 )}
-              </section>
+              </ScrollArea>
               <div className="pagination">
                 <span>
                   共 {total} 条 · 当前 {total ? offset + 1 : 0}–{Math.min(offset + 50, total)}
@@ -1535,70 +1594,10 @@ export default function App() {
                   <small>消息、记录与设置</small>
                 </section>
               </div>
-              <details className="storage-locations">
-                <summary>
-                  <FolderOpen size={16} />
-                  存储位置与数据库整理
-                </summary>
-                <div className="paths">
-                  {[
-                    {
-                      key: 'cache' as const,
-                      title: '中转文件位置',
-                      remark: '暂存传输文件，完成后按保留时间清理。',
-                      path: admin.settings.cacheDir,
-                    },
-                    {
-                      key: 'data' as const,
-                      title: 'SQLite 数据库位置',
-                      remark: '保存文字消息、设备连接、收发记录与设置。',
-                      path: admin.databasePath,
-                    },
-                    {
-                      key: 'receive' as const,
-                      title: '接收文件位置',
-                      remark: '保存本机已接收的正式文件，不会自动清理。',
-                      path: admin.settings.receiveDir,
-                    },
-                  ].map((location) => (
-                    <section className="panel storage-location-card" key={location.key}>
-                      <h3>{location.title}</h3>
-                      <p className="subtle">{location.remark}</p>
-                      <div className="storage-location-path">
-                        <Button
-                          title={`复制${location.title}`}
-                          onClick={() => void run(() => copy(location.path))}
-                        >
-                          <Copy size={16} />
-                        </Button>
-                        <code>{location.path}</code>
-                      </div>
-                      <div className="storage-location-actions">
-                        <Button
-                          onClick={() => void run(() => window.relay3!.openDirectory(location.key))}
-                        >
-                          <FolderOpen size={16} />
-                          打开目录
-                        </Button>
-                        {location.key === 'data' && (
-                          <Button
-                            disabled={busy}
-                            onClick={() =>
-                              void run(async () => {
-                                await management('/database/compact', {});
-                                await refreshAdmin();
-                                inform('数据库已整理，历史记录保留');
-                              })
-                            }
-                          >
-                            整理空间
-                          </Button>
-                        )}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              </details>
+              <Button onClick={() => setModal('storageLocations')}>
+                <FolderOpen size={16} />
+                存储位置与数据库整理
+              </Button>
               <div className="storage-files">
                 <section className="panel">
                   <div className="section-head">
@@ -1636,35 +1635,46 @@ export default function App() {
                         />
                         选择所有可清理文件
                       </label>
-                      {cache.entries.map((e) => (
-                        <label className="cache-row" key={e.folder + e.id}>
-                          <input
-                            type="checkbox"
-                            disabled={e.busy}
-                            checked={selected.includes(e.id)}
-                            onChange={(ev) =>
-                              setSelected(
-                                ev.target.checked
-                                  ? [...selected, e.id]
-                                  : selected.filter((id) => id !== e.id),
-                              )
-                            }
-                          />
-                          <File size={20} />
-                          <div>
-                            <strong>{e.name}</strong>
-                            <small>
-                              {sizes(e.bytes)} ·{' '}
-                              {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
-                              <br />
-                              {e.expiresAt
-                                ? `自动清理：${date(e.expiresAt)}`
-                                : '尚未进入自动清理计时'}
-                            </small>
-                          </div>
-                          <Badge status={e.status} />
-                        </label>
-                      ))}
+                      <ScrollArea
+                        memoryKey={`cache:${admin.settings.cacheDir}`}
+                        className="storage-list"
+                        tabIndex={0}
+                        aria-label="中转缓存列表"
+                      >
+                        {cache.entries.map((e) => (
+                          <label
+                            className="cache-row"
+                            key={e.folder + e.id}
+                            data-scroll-id={e.folder + e.id}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={e.busy}
+                              checked={selected.includes(e.id)}
+                              onChange={(ev) =>
+                                setSelected(
+                                  ev.target.checked
+                                    ? [...selected, e.id]
+                                    : selected.filter((id) => id !== e.id),
+                                )
+                              }
+                            />
+                            <File size={20} />
+                            <div>
+                              <strong>{e.name}</strong>
+                              <small>
+                                {sizes(e.bytes)} ·{' '}
+                                {e.folder === 'partial' ? '未完成上传' : '完整缓存'}
+                                <br />
+                                {e.expiresAt
+                                  ? `自动清理：${date(e.expiresAt)}`
+                                  : '尚未进入自动清理计时'}
+                              </small>
+                            </div>
+                            <Badge status={e.status} />
+                          </label>
+                        ))}
+                      </ScrollArea>
                     </>
                   ) : (
                     <Empty icon={<HardDrive size={28} />} title="缓存目录是空的">
@@ -1712,44 +1722,56 @@ export default function App() {
                       </option>
                     ))}
                   </select>
-                  {received.length ? (
-                    received
-                      .filter(
-                        (f) =>
-                          receivedStation === 'all' ||
-                          (f.stationId && f.stationName ? f.stationId : 'other') ===
-                            receivedStation,
-                      )
-                      .map((f) => (
-                        <label className="cache-row received-row" key={f.id}>
-                          <input
-                            type="checkbox"
-                            checked={receivedSelected.includes(f.id)}
-                            onChange={(e) =>
-                              setReceivedSelected(
-                                e.target.checked
-                                  ? [...receivedSelected, f.id]
-                                  : receivedSelected.filter((id) => id !== f.id),
-                              )
-                            }
-                          />
-                          <File size={20} />
-                          <div>
-                            <strong>{f.name}</strong>
-                            <small>
-                              {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
-                              <br />
-                              {f.path}
-                            </small>
-                          </div>
-                          <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
-                        </label>
-                      ))
-                  ) : (
-                    <Empty icon={<Download size={28} />} title="还没有本机接收文件">
-                      通过桌面应用接收的文件会列在这里。
-                    </Empty>
-                  )}
+                  <ScrollArea
+                    memoryKey={`received:${receivedStation}`}
+                    resetOnKeyChange
+                    className="storage-list"
+                    tabIndex={0}
+                    aria-label="已接收文件列表"
+                  >
+                    {received.length ? (
+                      received
+                        .filter(
+                          (f) =>
+                            receivedStation === 'all' ||
+                            (f.stationId && f.stationName ? f.stationId : 'other') ===
+                              receivedStation,
+                        )
+                        .map((f) => (
+                          <label
+                            className="cache-row received-row"
+                            key={f.id}
+                            data-scroll-id={f.id}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={receivedSelected.includes(f.id)}
+                              onChange={(e) =>
+                                setReceivedSelected(
+                                  e.target.checked
+                                    ? [...receivedSelected, f.id]
+                                    : receivedSelected.filter((id) => id !== f.id),
+                                )
+                              }
+                            />
+                            <File size={20} />
+                            <div>
+                              <strong>{f.name}</strong>
+                              <small>
+                                {sizes(f.size)} · {date(f.receivedAt)} · {f.stationName || '其他'}
+                                <br />
+                                {f.path}
+                              </small>
+                            </div>
+                            <span className="badge">{f.exists ? '已保存' : '已移走或删除'}</span>
+                          </label>
+                        ))
+                    ) : (
+                      <Empty icon={<Download size={28} />} title="还没有本机接收文件">
+                        通过桌面应用接收的文件会列在这里。
+                      </Empty>
+                    )}
+                  </ScrollArea>
                 </section>
               </div>
               <p className="storage-footnote">清理缓存保留历史和已接收文件。</p>
@@ -1789,184 +1811,204 @@ export default function App() {
                 </Button>
               </div>
               <section className="panel settings-panel">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run(async () => {
-                      let warning: string | undefined;
-                      if (desktop) {
-                        const updated = await management('/settings', form);
-                        setAdmin(updated);
-                        warning = updated.warning;
-                        if (session && connected)
-                          await request(session.base, session.token, '/api/device', {
-                            name: form.deviceName,
-                          }).catch(() => {});
-                        setDeviceName(form.deviceName);
-                        setBoot((b) => (b ? { ...b, deviceName: form.deviceName } : b));
-                      } else {
-                        save('relay3-device-name', deviceName);
-                        if (session && connected)
-                          await request(session.base, session.token, '/api/device', {
-                            name: deviceName,
-                          }).catch(() => {});
-                      }
-                      inform(warning ?? '设置已保存', !!warning);
-                    });
-                  }}
+                <ScrollArea
+                  memoryKey="settings"
+                  className="settings-body"
+                  tabIndex={0}
+                  aria-label="设置内容"
                 >
-                  <div className={desktop ? 'form-grid' : 'device-name-field'}>
-                    <label>
-                      设备名称
-                      <input
-                        required
-                        maxLength={80}
-                        value={desktop ? form.deviceName : deviceName}
-                        onChange={(e) =>
-                          desktop
-                            ? setForm({ ...form, deviceName: e.target.value })
-                            : setDeviceName(e.target.value)
+                  <form
+                    id="settings-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void run(async () => {
+                        let warning: string | undefined;
+                        if (desktop) {
+                          const updated = await management('/settings', form);
+                          setAdmin(updated);
+                          warning = updated.warning;
+                          if (session && connected)
+                            await request(session.base, session.token, '/api/device', {
+                              name: form.deviceName,
+                            }).catch(() => {});
+                          setDeviceName(form.deviceName);
+                          setBoot((b) => (b ? { ...b, deviceName: form.deviceName } : b));
+                        } else {
+                          save('relay3-device-name', deviceName);
+                          if (session && connected)
+                            await request(session.base, session.token, '/api/device', {
+                              name: deviceName,
+                            }).catch(() => {});
                         }
-                      />
-                    </label>
-                    {desktop && (
+                        inform(warning ?? '设置已保存', !!warning);
+                      });
+                    }}
+                  >
+                    <div className={desktop ? 'form-grid' : 'device-name-field'}>
                       <label>
-                        中转站名称
+                        设备名称
                         <input
-                          aria-label="中转站名称"
                           required
                           maxLength={80}
-                          value={form.stationName}
-                          onChange={(e) => setForm({ ...form, stationName: e.target.value })}
+                          value={desktop ? form.deviceName : deviceName}
+                          onChange={(e) =>
+                            desktop
+                              ? setForm({ ...form, deviceName: e.target.value })
+                              : setDeviceName(e.target.value)
+                          }
                         />
-                        <small>供连接的设备识别，与本机设备名称独立。</small>
                       </label>
-                    )}
-                  </div>
-                  {desktop && (
-                    <>
-                      <div className="form-grid">
+                      {desktop && (
                         <label>
-                          中转站端口
+                          中转站名称
                           <input
-                            type="number"
-                            min={1024}
-                            max={65535}
+                            aria-label="中转站名称"
                             required
-                            disabled={admin?.running}
-                            value={form.port}
-                            onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                            maxLength={80}
+                            value={form.stationName}
+                            onChange={(e) => setForm({ ...form, stationName: e.target.value })}
                           />
-                          <small>关闭中转站后可修改</small>
+                          <small>供连接的设备识别，与本机设备名称独立。</small>
                         </label>
-                        <label>
-                          完成后保留时间（小时）
-                          <input
-                            type="number"
-                            min={0.01}
-                            max={720}
-                            step="any"
-                            required
-                            value={form.retentionHours}
-                            onChange={(e) =>
-                              setForm({ ...form, retentionHours: Number(e.target.value) })
-                            }
-                          />
-                          <small>应用于已完成缓存</small>
-                        </label>
-                      </div>
-                      {(['cacheDir', 'receiveDir'] as const).map((k) => (
-                        <label key={k}>
-                          {k === 'cacheDir' ? '中转缓存位置' : '接收文件保存位置'}
-                          <div className="path-input">
-                            <input readOnly value={form[k]} />
-                            <Button
-                              disabled={k === 'cacheDir' && admin?.running}
-                              onClick={() =>
-                                void run(async () => {
-                                  const p = await window.relay3!.pickDirectory();
-                                  if (p) setForm((f) => ({ ...f, [k]: p }));
-                                })
+                      )}
+                    </div>
+                    {desktop && (
+                      <>
+                        <div className="form-grid">
+                          <label>
+                            中转站端口
+                            <input
+                              type="number"
+                              min={1024}
+                              max={65535}
+                              required
+                              disabled={admin?.running}
+                              value={form.port}
+                              onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                            />
+                            <small>关闭中转站后可修改</small>
+                          </label>
+                          <label>
+                            完成后保留时间（小时）
+                            <input
+                              type="number"
+                              min={0.01}
+                              max={720}
+                              step="any"
+                              required
+                              value={form.retentionHours}
+                              onChange={(e) =>
+                                setForm({ ...form, retentionHours: Number(e.target.value) })
                               }
-                            >
-                              <FolderOpen size={17} />
-                              选择
-                            </Button>
-                          </div>
-                          <small>
-                            {k === 'cacheDir'
-                              ? '关闭中转站后可迁移到空目录。'
-                              : '同名文件自动编号。'}
-                          </small>
-                        </label>
-                      ))}
-                    </>
+                            />
+                            <small>应用于已完成缓存</small>
+                          </label>
+                        </div>
+                        {(['cacheDir', 'receiveDir'] as const).map((k) => (
+                          <label key={k}>
+                            {k === 'cacheDir' ? '中转缓存位置' : '接收文件保存位置'}
+                            <div className="path-input">
+                              <input readOnly value={form[k]} />
+                              <Button
+                                disabled={k === 'cacheDir' && admin?.running}
+                                onClick={() =>
+                                  void run(async () => {
+                                    const p = await window.relay3!.pickDirectory();
+                                    if (p) setForm((f) => ({ ...f, [k]: p }));
+                                  })
+                                }
+                              >
+                                <FolderOpen size={17} />
+                                选择
+                              </Button>
+                            </div>
+                            <small>
+                              {k === 'cacheDir'
+                                ? '关闭中转站后可迁移到空目录。'
+                                : '同名文件自动编号。'}
+                            </small>
+                          </label>
+                        ))}
+                      </>
+                    )}
+                  </form>
+                  {desktop && (
+                    <details className="note diagnostic-panel">
+                      <summary>诊断日志</summary>
+                      <p>
+                        异常自动记录在本机，日志轮转保留约 30
+                        MB。导出包含系统信息和已有崩溃转储，不自动上传。
+                      </p>
+                      <small>崩溃转储可能包含进程内存，请仅分享给信任的排查人员。</small>
+                      <div className="identity-code">
+                        <Button
+                          title="复制日志路径"
+                          onClick={() => void run(() => copy(diagnosticState?.path ?? ''))}
+                        >
+                          <Copy size={16} />
+                        </Button>
+                        <code>{diagnosticState?.path}</code>
+                      </div>
+                      <small>占用 {sizes(diagnosticState?.bytes ?? 0)}</small>
+                      <div className="actions">
+                        <Button
+                          onClick={() => void run(() => window.relay3!.openDirectory('logs'))}
+                        >
+                          打开日志目录
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            void run(async () => {
+                              const saved = await window.relay3!.exportDiagnostics();
+                              if (saved) inform('诊断日志已导出');
+                            })
+                          }
+                        >
+                          导出诊断日志
+                        </Button>
+                        <Button
+                          kind="danger"
+                          onClick={() =>
+                            void run(async () => {
+                              if (await window.relay3!.clearDiagnostics()) {
+                                setDiagnosticState(await window.relay3!.diagnosticInfo());
+                                inform('诊断日志已清理');
+                              }
+                            })
+                          }
+                        >
+                          清理日志
+                        </Button>
+                      </div>
+                    </details>
                   )}
-                  <Button type="submit" kind="primary" disabled={busy}>
+                  {!desktop && (
+                    <div className="note">
+                      <Smartphone size={18} />
+                      <p>下载位置由系统决定，保存后请确认收到。</p>
+                    </div>
+                  )}
+                </ScrollArea>
+                <div className="settings-actions">
+                  <Button type="submit" form="settings-form" kind="primary" disabled={busy}>
                     保存设置
                   </Button>
-                </form>
-                {desktop && (
-                  <details className="note diagnostic-panel">
-                    <summary>诊断日志</summary>
-                    <p>
-                      异常自动记录在本机，日志轮转保留约 30
-                      MB。导出包含系统信息和已有崩溃转储，不自动上传。
-                    </p>
-                    <small>崩溃转储可能包含进程内存，请仅分享给信任的排查人员。</small>
-                    <div className="identity-code">
-                      <Button
-                        title="复制日志路径"
-                        onClick={() => void run(() => copy(diagnosticState?.path ?? ''))}
-                      >
-                        <Copy size={16} />
-                      </Button>
-                      <code>{diagnosticState?.path}</code>
-                    </div>
-                    <small>占用 {sizes(diagnosticState?.bytes ?? 0)}</small>
-                    <div className="actions">
-                      <Button onClick={() => void run(() => window.relay3!.openDirectory('logs'))}>
-                        打开日志目录
-                      </Button>
-                      <Button
-                        onClick={() =>
-                          void run(async () => {
-                            const saved = await window.relay3!.exportDiagnostics();
-                            if (saved) inform('诊断日志已导出');
-                          })
-                        }
-                      >
-                        导出诊断日志
-                      </Button>
-                      <Button
-                        kind="danger"
-                        onClick={() =>
-                          void run(async () => {
-                            if (await window.relay3!.clearDiagnostics()) {
-                              setDiagnosticState(await window.relay3!.diagnosticInfo());
-                              inform('诊断日志已清理');
-                            }
-                          })
-                        }
-                      >
-                        清理日志
-                      </Button>
-                    </div>
-                  </details>
-                )}
-                {!desktop && (
-                  <div className="note">
-                    <Smartphone size={18} />
-                    <p>下载位置由系统决定，保存后请确认收到。</p>
-                  </div>
-                )}
+                </div>
               </section>
             </>
           )}
         </main>
       </div>
       {modal === 'connect' && (
-        <Modal title="连接中转站" onClose={() => setModal(null)}>
+        <Modal
+          title="连接中转站"
+          onClose={() => setModal(null)}
+          actions={
+            <Button type="submit" form="connect-station-form" kind="primary" disabled={busy}>
+              连接
+            </Button>
+          }
+        >
           {desktop && (
             <NearbyStations
               selectedBase={connectUrl}
@@ -1979,6 +2021,7 @@ export default function App() {
             />
           )}
           <form
+            id="connect-station-form"
             onSubmit={(e) => {
               e.preventDefault();
               void run(() => join());
@@ -2028,9 +2071,6 @@ export default function App() {
                   : '输入中转站地址后，填写其页面显示的 6 位数字。完整配对链接无需另外填写。'}
               </small>
             </label>
-            <Button type="submit" kind="primary" disabled={busy}>
-              连接
-            </Button>
           </form>
           {Object.keys(savedHubs).length > 0 && !(desktop && discoveredSelection) && (
             <SavedStations
@@ -2041,8 +2081,76 @@ export default function App() {
           )}
         </Modal>
       )}
+      {modal === 'storageLocations' && admin && (
+        <Modal title="存储位置与数据库整理" onClose={() => setModal(null)}>
+          <div className="storage-locations">
+            <div className="paths">
+              {[
+                {
+                  key: 'cache' as const,
+                  title: '中转文件位置',
+                  remark: '暂存传输文件，完成后按保留时间清理。',
+                  path: admin.settings.cacheDir,
+                },
+                {
+                  key: 'data' as const,
+                  title: 'SQLite 数据库位置',
+                  remark: '保存文字消息、设备连接、收发记录与设置。',
+                  path: admin.databasePath,
+                },
+                {
+                  key: 'receive' as const,
+                  title: '接收文件位置',
+                  remark: '保存本机已接收的正式文件，不会自动清理。',
+                  path: admin.settings.receiveDir,
+                },
+              ].map((location) => (
+                <section className="panel storage-location-card" key={location.key}>
+                  <h3>{location.title}</h3>
+                  <p className="subtle">{location.remark}</p>
+                  <div className="storage-location-path">
+                    <Button
+                      title={`复制${location.title}`}
+                      onClick={() => void run(() => copy(location.path))}
+                    >
+                      <Copy size={16} />
+                    </Button>
+                    <code>{location.path}</code>
+                  </div>
+                  <div className="storage-location-actions">
+                    <Button
+                      onClick={() => void run(() => window.relay3!.openDirectory(location.key))}
+                    >
+                      <FolderOpen size={16} />
+                      打开目录
+                    </Button>
+                    {location.key === 'data' && (
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            await management('/database/compact', {});
+                            await refreshAdmin();
+                            inform('数据库已整理，历史记录保留');
+                          })
+                        }
+                      >
+                        整理空间
+                      </Button>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
       {modal === 'copy' && (
-        <Modal title="手动复制" onClose={() => setModal(null)}>
+        <Modal
+          title="手动复制"
+          onClose={() => setModal(null)}
+          actions={<Button onClick={() => setModal(null)}>完成</Button>}
+        >
           <p>浏览器未允许自动复制，请长按或选中下面的内容复制。</p>
           <textarea
             aria-label="待复制内容"
@@ -2050,7 +2158,6 @@ export default function App() {
             value={copyValue}
             onFocus={(e) => e.target.select()}
           />
-          <Button onClick={() => setModal(null)}>完成</Button>
         </Modal>
       )}
       {modal === 'about' && (
@@ -2074,6 +2181,31 @@ export default function App() {
         <Modal
           title={modal === 'forgetStation' ? '忘记中转站配对' : '断开中转站'}
           onClose={() => setModal(null)}
+          actions={
+            <div className="dialog-actions">
+              <Button onClick={() => setModal(null)}>取消</Button>
+              <Button
+                kind="danger"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await disconnectStation(targetStation);
+                    if (modal === 'forgetStation') {
+                      await management('/client/forget', { stationId: targetStation });
+                      const next = Object.fromEntries(
+                        Object.entries(savedHubs).filter(([, s]) => s.stationId !== targetStation),
+                      );
+                      setSavedHubs(next);
+                      save('relay3-hubs', next);
+                    }
+                    setModal(null);
+                  })
+                }
+              >
+                {modal === 'forgetStation' ? '确认忘记配对' : '取消传输并断开'}
+              </Button>
+            </div>
+          }
         >
           <p>
             {modal === 'forgetStation'
@@ -2081,32 +2213,10 @@ export default function App() {
               : '此中转站还有未结束的传输，断开将取消这些传输。'}
             其他中转站的连接继续运行。
           </p>
-          <div className="dialog-actions">
-            <Button onClick={() => setModal(null)}>取消</Button>
-            <Button
-              kind="danger"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await disconnectStation(targetStation);
-                  if (modal === 'forgetStation') {
-                    await management('/client/forget', { stationId: targetStation });
-                    const next = Object.fromEntries(
-                      Object.entries(savedHubs).filter(([, s]) => s.stationId !== targetStation),
-                    );
-                    setSavedHubs(next);
-                    save('relay3-hubs', next);
-                  }
-                  setModal(null);
-                })
-              }
-            >
-              {modal === 'forgetStation' ? '确认忘记配对' : '取消传输并断开'}
-            </Button>
-          </div>
         </Modal>
       )}
       {modal &&
+        modal !== 'storageLocations' &&
         modal !== 'about' &&
         modal !== 'connect' &&
         modal !== 'copy' &&
@@ -2129,6 +2239,64 @@ export default function App() {
                           : '清理收发历史'
             }
             onClose={() => setModal(null)}
+            actions={
+              <div className="dialog-actions">
+                <Button onClick={() => setModal(null)}>取消</Button>
+                <Button
+                  kind="danger"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      if (modal === 'resetIdentity') {
+                        await resetIdentity();
+                      } else if (modal === 'removeDevice' && removeDevice) {
+                        await management('/device/delete', { id: removeDevice.id });
+                        await refreshAdmin();
+                        inform('设备及连接历史已清除，收发记录保留');
+                      } else if (modal === 'stop') {
+                        const stopped = await management<AdminState>('/station/stop', {
+                          force: true,
+                        });
+                        setAdmin(stopped);
+                        if (multi.current.current[stopped.settings.stationId])
+                          await disconnectStation(stopped.settings.stationId);
+                      } else if (modal === 'clearCache') {
+                        const result = await management('/cache/delete', { ids: selected });
+                        const failed = result.results.filter((r: any) => !r.ok);
+                        if (failed.length) inform(failed.map((r: any) => r.error).join('；'), true);
+                        else inform('缓存已清理，记录保留');
+                        setSelected([]);
+                        setCache(await management('/cache'));
+                      } else if (modal === 'clearReceived') {
+                        const r = await management('/received/delete', { ids: receivedSelected });
+                        setReceived((await management('/received')).entries);
+                        setReceivedSelected([]);
+                        inform(`已删除 ${r.deleted} 个本机接收文件，收发记录保留`);
+                      } else if (modal === 'clearDevices') {
+                        const r = await management('/devices/clear', { hours: clearHours });
+                        inform(`已清理 ${r.deleted} 台离线设备的历史`);
+                        await refreshAdmin();
+                      } else {
+                        const r = await management('/records/clear', {});
+                        inform(`已清理 ${r.deleted} 条记录`);
+                        const result = await management('/records');
+                        setRecords(result.items);
+                        setTotal(result.total);
+                        setHistoryStations(result.stations ?? []);
+                        setOffset(0);
+                      }
+                      setModal(null);
+                    })
+                  }
+                >
+                  {modal === 'resetIdentity'
+                    ? '确认更换'
+                    : modal === 'stop'
+                      ? '关闭中转站'
+                      : '确认清理'}
+                </Button>
+              </div>
+            }
           >
             <p>
               {modal === 'resetIdentity'
@@ -2156,62 +2324,6 @@ export default function App() {
                 </select>
               </label>
             )}
-            <div className="dialog-actions">
-              <Button onClick={() => setModal(null)}>取消</Button>
-              <Button
-                kind="danger"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    if (modal === 'resetIdentity') {
-                      await resetIdentity();
-                    } else if (modal === 'removeDevice' && removeDevice) {
-                      await management('/device/delete', { id: removeDevice.id });
-                      await refreshAdmin();
-                      inform('设备及连接历史已清除，收发记录保留');
-                    } else if (modal === 'stop') {
-                      const stopped = await management<AdminState>('/station/stop', {
-                        force: true,
-                      });
-                      setAdmin(stopped);
-                      if (multi.current.current[stopped.settings.stationId])
-                        await disconnectStation(stopped.settings.stationId);
-                    } else if (modal === 'clearCache') {
-                      const result = await management('/cache/delete', { ids: selected });
-                      const failed = result.results.filter((r: any) => !r.ok);
-                      if (failed.length) inform(failed.map((r: any) => r.error).join('；'), true);
-                      else inform('缓存已清理，记录保留');
-                      setSelected([]);
-                      setCache(await management('/cache'));
-                    } else if (modal === 'clearReceived') {
-                      const r = await management('/received/delete', { ids: receivedSelected });
-                      setReceived((await management('/received')).entries);
-                      setReceivedSelected([]);
-                      inform(`已删除 ${r.deleted} 个本机接收文件，收发记录保留`);
-                    } else if (modal === 'clearDevices') {
-                      const r = await management('/devices/clear', { hours: clearHours });
-                      inform(`已清理 ${r.deleted} 台离线设备的历史`);
-                      await refreshAdmin();
-                    } else {
-                      const r = await management('/records/clear', {});
-                      inform(`已清理 ${r.deleted} 条记录`);
-                      const result = await management('/records');
-                      setRecords(result.items);
-                      setTotal(result.total);
-                      setHistoryStations(result.stations ?? []);
-                      setOffset(0);
-                    }
-                    setModal(null);
-                  })
-                }
-              >
-                {modal === 'resetIdentity'
-                  ? '确认更换'
-                  : modal === 'stop'
-                    ? '关闭中转站'
-                    : '确认清理'}
-              </Button>
-            </div>
           </Modal>
         )}
     </div>

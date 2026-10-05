@@ -1,3 +1,4 @@
+import { ScrollArea } from '../components/ScrollArea';
 import { reportException } from '../diagnostics';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -92,6 +93,7 @@ export function ChatHall({
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   const scrollPosition = useRef(0);
+  const cipherFeed = useRef<HTMLDivElement>(null);
   const api = <T,>(url: string, body?: unknown) =>
     request<T>(session.base, session.token, '/api/chat' + url, body);
   function display(m: ChatMessage) {
@@ -238,7 +240,13 @@ export function ChatHall({
     if (modalRange.after !== undefined) query.set('after', String(modalRange.after));
     if (modalRange.upper !== undefined) query.set('upper', String(modalRange.upper));
     void api<MessagePage>('/messages?' + query)
-      .then((result) => !dead && setCipherRows(result))
+      .then((result) => {
+        if (dead) return;
+        setCipherRows(result);
+        requestAnimationFrame(() => {
+          if (!dead && cipherFeed.current) cipherFeed.current.scrollTop = 0;
+        });
+      })
       .catch((e) => !dead && setError(e.message));
     return () => {
       dead = true;
@@ -316,113 +324,114 @@ export function ChatHall({
           void send(encrypted ? 'encrypted' : 'plain');
         }}
       >
-        {!encrypted && (
-          <div className="chat-compose-options">
-            <button
-              type="button"
-              className="chat-encrypt-action"
-              onClick={() => setMode('encrypted')}
-            >
-              <LockKeyhole size={17} /> 发送密文
-            </button>
-            <span className="subtle">文字原样展示</span>
-          </div>
-        )}
-        <label className="chat-message-label">
-          <span className="chat-input-label">文字消息</span>
-          <textarea
-            aria-label="文字消息"
-            value={encrypted ? text : plainText}
-            onChange={(e) => {
-              (encrypted ? setText : setPlainText)(e.target.value);
-              draftId.current = uuid();
-            }}
-            placeholder="输入纯文本、Markdown 或 HTML 原文"
-            rows={4}
-          />
-        </label>
-        {encrypted && (
-          <>
-            <fieldset className="chat-recipients">
-              <legend>密文接收设备 · 含发送者</legend>
-              {selected.some((id) => !devices.some((d) => d.id === id && d.publicKey)) && (
-                <div className="notice">
-                  接收名单包含已清除或密钥不可用的设备。
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelected((ids) =>
-                        ids.filter((id) => devices.some((d) => d.id === id && d.publicKey)),
-                      );
-                      draftId.current = uuid();
-                    }}
-                  >
-                    移除失效接收设备
-                  </button>
+        <div className={encrypted ? 'chat-compose-body' : undefined}>
+          {!encrypted && (
+            <div className="chat-compose-options">
+              <button
+                type="button"
+                className="chat-encrypt-action"
+                onClick={() => setMode('encrypted')}
+              >
+                <LockKeyhole size={17} /> 发送密文
+              </button>
+              <span className="subtle">文字原样展示</span>
+            </div>
+          )}
+          <label className="chat-message-label">
+            <span className="chat-input-label">文字消息</span>
+            <textarea
+              aria-label="文字消息"
+              value={encrypted ? text : plainText}
+              onChange={(e) => {
+                (encrypted ? setText : setPlainText)(e.target.value);
+                draftId.current = uuid();
+              }}
+              placeholder="输入纯文本、Markdown 或 HTML 原文"
+              rows={4}
+            />
+          </label>
+          {encrypted && (
+            <>
+              <fieldset className="chat-recipients">
+                <legend>密文接收设备 · 含发送者</legend>
+                {selected.some((id) => !devices.some((d) => d.id === id && d.publicKey)) && (
+                  <div className="notice">
+                    接收名单包含已清除或密钥不可用的设备。
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected((ids) =>
+                          ids.filter((id) => devices.some((d) => d.id === id && d.publicKey)),
+                        );
+                        draftId.current = uuid();
+                      }}
+                    >
+                      移除失效接收设备
+                    </button>
+                  </div>
+                )}
+                {devices.map((d) => (
+                  <label key={d.id}>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(d.id)}
+                      disabled={d.id === session.id || !d.publicKey || busy}
+                      onChange={(e) => {
+                        setSelected((ids) =>
+                          e.target.checked ? [...ids, d.id] : ids.filter((id) => id !== d.id),
+                        );
+                        draftId.current = uuid();
+                      }}
+                    />
+                    <DeviceAvatar id={d.id} name={d.name} size={28} />
+                    <span>
+                      {d.name}
+                      <DeviceTag platform={d.platform} />
+                      {d.id === session.id ? '（本机，固定包含）' : ''}
+                      <small>
+                        {d.online ? '在线' : '离线，上线后可读取'}
+                        {!d.publicKey ? ' · 尚未登记公钥，不可选' : ''}
+                        {recent[d.id] ? ' · 最近选过' : ''}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <details className="chat-remark-editor">
+                <summary>公开备注（可选）</summary>
+                <div className="chat-remark-input">
+                  <label>
+                    公开备注样式
+                    <select
+                      value={remarkStyle}
+                      onChange={(e) => {
+                        setRemarkStyle(e.target.value as any);
+                        draftId.current = uuid();
+                      }}
+                    >
+                      <option value="hint">提示</option>
+                      <option value="note">说明</option>
+                      <option value="clue">线索</option>
+                    </select>
+                  </label>
+                  <label>
+                    公开备注
+                    <textarea
+                      aria-label="公开备注"
+                      value={remark}
+                      maxLength={1000}
+                      onChange={(e) => {
+                        setRemark(e.target.value);
+                        draftId.current = uuid();
+                      }}
+                      placeholder="所有设备可见，不会授予解密权限"
+                    />
+                  </label>
                 </div>
-              )}
-              {devices.map((d) => (
-                <label key={d.id}>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(d.id)}
-                    disabled={d.id === session.id || !d.publicKey || busy}
-                    onChange={(e) => {
-                      setSelected((ids) =>
-                        e.target.checked ? [...ids, d.id] : ids.filter((id) => id !== d.id),
-                      );
-                      draftId.current = uuid();
-                    }}
-                  />
-                  <DeviceAvatar id={d.id} name={d.name} size={28} />
-                  <span>
-                    {d.name}
-                    <DeviceTag platform={d.platform} />
-                    {d.id === session.id ? '（本机，固定包含）' : ''}
-                    <small>
-                      {d.online ? '在线' : '离线，上线后可读取'}
-                      {!d.publicKey ? ' · 尚未登记公钥，不可选' : ''}
-                      {recent[d.id] ? ' · 最近选过' : ''}
-                    </small>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <details className="chat-remark-editor">
-              <summary>公开备注（可选）</summary>
-              <div className="chat-remark-input">
-                <label>
-                  公开备注样式
-                  <select
-                    value={remarkStyle}
-                    onChange={(e) => {
-                      setRemarkStyle(e.target.value as any);
-                      draftId.current = uuid();
-                    }}
-                  >
-                    <option value="hint">提示</option>
-                    <option value="note">说明</option>
-                    <option value="clue">线索</option>
-                  </select>
-                </label>
-                <label>
-                  公开备注
-                  <textarea
-                    aria-label="公开备注"
-                    value={remark}
-                    maxLength={1000}
-                    onChange={(e) => {
-                      setRemark(e.target.value);
-                      draftId.current = uuid();
-                    }}
-                    placeholder="所有设备可见，不会授予解密权限"
-                  />
-                </label>
-              </div>
-            </details>
-          </>
-        )}
-
+              </details>
+            </>
+          )}
+        </div>
         <div className="chat-send-row">
           <small
             className={[...(encrypted ? text : plainText)].length > 10000 ? 'error-text' : 'subtle'}
@@ -483,7 +492,7 @@ export function ChatHall({
               {devices
                 .filter((d) => d.online === online)
                 .map((d) => (
-                  <div className="chat-device" key={d.id}>
+                  <div className="chat-device" key={d.id} data-scroll-id={d.id}>
                     <DeviceAvatar
                       id={d.id}
                       name={d.name}
@@ -658,7 +667,7 @@ export function ChatHall({
               disabled={!rows.length}
               onClick={() => {
                 setTracking(false);
-                void load(`&before=${rows[0].id}`, 'start').catch((e) => setError(e.message));
+                void load(`&before=${rows[0].id}`, 'end').catch((e) => setError(e.message));
               }}
             >
               <ChevronLeft size={16} />
@@ -685,7 +694,15 @@ export function ChatHall({
           </div>
           {renderComposer(false)}
         </section>
-        <aside className="chat-info chat-info-desktop">{renderInfo()}</aside>
+        <ScrollArea
+          as="aside"
+          memoryKey={`chat-devices:${session.stationId}`}
+          className="chat-info chat-info-desktop"
+          tabIndex={0}
+          aria-label="大厅设备信息"
+        >
+          {renderInfo()}
+        </ScrollArea>
       </div>
       {mode === 'encrypted' && visible && (
         <ChatDialog
@@ -723,7 +740,7 @@ export function ChatHall({
                 <X size={18} />
               </button>
             </div>
-            <div className="chat-info">{renderInfo()}</div>
+            <div className="chat-info chat-modal-body">{renderInfo()}</div>
           </section>
         </ChatDialog>
       )}
@@ -743,11 +760,11 @@ export function ChatHall({
               {modalRange.after !== undefined ? '本次上线前未读的密文' : '全部历史密文'} ·{' '}
               {cipherRows.total} 条，每页 20 条；翻页不改变大厅阅读游标。
             </p>
-            <div className="chat-modal-content">
+            <div className="chat-modal-content chat-modal-body" ref={cipherFeed}>
               {cipherRows.items.map(renderMessage)}
               {!cipherRows.items.length && <p>暂无密文消息</p>}
             </div>
-            <div className="chat-pagination">
+            <div className="chat-pagination chat-modal-footer">
               <button disabled={modalPage === 0} onClick={() => setModalPage((p) => p - 1)}>
                 上一页
               </button>

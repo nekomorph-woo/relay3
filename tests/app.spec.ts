@@ -198,6 +198,10 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(fullPath);
   }
   await desktop.screenshot({ path: 'test-results/storage-location-cards.png' });
+  await desktop
+    .getByRole('dialog', { name: '存储位置与数据库整理' })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
 
   expect(errors).toEqual([]);
 });
@@ -344,6 +348,10 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
   await desktop.getByRole('button', { name: '本机存储', exact: true }).click();
   await desktop.getByText('存储位置与数据库整理', { exact: true }).click();
   await expect(desktop.locator('.paths')).toContainText(path.join(dir, 'relay3.sqlite'));
+  await desktop
+    .getByRole('dialog', { name: '存储位置与数据库整理' })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   expect(await desktop.title()).toBe('Relay3');
   expect(errors).toEqual([]);
 });

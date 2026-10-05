@@ -1,3 +1,4 @@
+import { ScrollArea } from './ScrollArea';
 import { Radio, Unplug, Trash2, ArrowUpRight } from 'lucide-react';
 import type { ClientConnection } from '../useConnections';
 import type { Session } from '../api';
@@ -28,7 +29,13 @@ export function ConnectedStations({
 }) {
   const stations = [...new Map(saved.map((s) => [s.stationId, s])).values()];
   return (
-    <section className="panel connected-stations">
+    <ScrollArea
+      as="section"
+      memoryKey="connected-stations"
+      className="panel connected-stations"
+      tabIndex={0}
+      aria-label="中转站列表"
+    >
       {!stations.length && <p className="subtle">还没有配对的中转站，连接后会保存在这里。</p>}
       {stations.map((saved) => {
         const connection = connections[saved.stationId];
@@ -45,7 +52,11 @@ export function ConnectedStations({
             ].includes(t.status),
           ).length ?? 0;
         return (
-          <article className="connected-station" key={session.stationId}>
+          <article
+            className="connected-station"
+            key={session.stationId}
+            data-scroll-id={session.stationId}
+          >
             <Radio size={21} />
             <div className="connected-station-description">
               <strong>
@@ -113,6 +124,6 @@ export function ConnectedStations({
           </article>
         );
       })}
-    </section>
+    </ScrollArea>
   );
 }
