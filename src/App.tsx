@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Info,
   Github,
+  ScanEye,
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
@@ -287,6 +288,8 @@ export default function App() {
   }, [notice]);
   const [modal, setModal] = useState<
     | null
+    | 'identity'
+    | 'diagnostics'
     | 'about'
     | 'connect'
     | 'clearRecords'
@@ -403,15 +406,33 @@ export default function App() {
     cacheDir: '',
     receiveDir: '',
   });
+  const [identityName, setIdentityName] = useState('');
+  async function saveDeviceName(name: string) {
+    const value = name.trim();
+    if (!value) throw new Error('请输入设备名称');
+    if (desktop) {
+      setAdmin(await management('/settings', { deviceName: value }));
+      setBoot((b) => (b ? { ...b, deviceName: value } : b));
+    } else save('relay3-device-name', value);
+    setDeviceName(value);
+    await Promise.all(
+      Object.values(multi.connections)
+        .filter((c) => c.status === 'connected')
+        .map((c) =>
+          request(c.session.base, c.session.token, '/api/device', { name: value }).catch(() => {}),
+        ),
+    );
+    inform('设置已保存');
+  }
   const [diagnosticState, setDiagnosticState] = useState<{
     path: string;
     crashPath: string;
     bytes: number;
   } | null>(null);
   useEffect(() => {
-    if (page === 'settings' && window.relay3)
+    if (modal === 'diagnostics' && window.relay3)
       void run(async () => setDiagnosticState(await window.relay3!.diagnosticInfo()));
-  }, [page]);
+  }, [modal]);
   const [savedHubs, setSavedHubs] = useState<Record<string, Session>>(stored('relay3-hubs', {}));
   const restored = useRef(false);
   function inform(text: string, error = false) {
@@ -479,7 +500,8 @@ export default function App() {
               )
             )
               multi.select(next.clientView.stationId);
-            if (next.clientView?.page === 'storage') setPage('cache');
+            if (next.clientView?.page === 'settings') setPage('transfer');
+            else if (next.clientView?.page === 'storage') setPage('cache');
             else if (next.clientView?.page && next.clientView.page in pageInfo)
               setPage(next.clientView.page as Page);
           }
@@ -908,16 +930,27 @@ export default function App() {
     { id: 'devices' as Page, label: '连接设备', icon: Monitor },
     { id: 'cache' as Page, label: '中转缓存', icon: HardDrive },
     { id: 'settings' as Page, label: desktop ? '设备' : '设置', icon: Settings },
-  ].filter((n) => desktop || ['transfer', 'chat', 'history', 'settings'].includes(n.id));
+  ].filter((n) =>
+    desktop ? n.id !== 'settings' : ['transfer', 'chat', 'history', 'settings'].includes(n.id),
+  );
   const historyRows = records;
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="device-self">
-          <DeviceAvatar
-            id={boot?.deviceId ?? mobileId.current}
-            name={boot?.deviceName ?? deviceName}
-          />
+          <button
+            className="identity-trigger"
+            aria-label="设备身份"
+            onClick={() => {
+              setIdentityName(boot?.deviceName ?? deviceName);
+              setModal('identity');
+            }}
+          >
+            <DeviceAvatar
+              id={boot?.deviceId ?? mobileId.current}
+              name={boot?.deviceName ?? deviceName}
+            />
+          </button>
           <div>
             <strong>
               {boot?.deviceName ?? deviceName}
@@ -968,7 +1001,6 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {desktop && id === 'settings' && <span className="nav-group-label">本机管理</span>}
               <button
                 key={id}
                 aria-label={label}
@@ -1030,6 +1062,13 @@ export default function App() {
                 跳转Relay3 Github
               </span>
             </button>
+            {desktop && (
+              <Tooltip text="诊断日志">
+                <button aria-label="诊断日志" onClick={() => setModal('diagnostics')}>
+                  <ScanEye size={17} />
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
       </aside>
@@ -1534,6 +1573,64 @@ export default function App() {
                       <dd>接收缓冲结束后 {admin.settings.retentionHours} 小时</dd>
                     </div>
                   </dl>
+                  <form
+                    className="station-settings"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void run(async () => {
+                        const updated = await management('/settings', {
+                          stationName: form.stationName,
+                          port: form.port,
+                          retentionHours: form.retentionHours,
+                        });
+                        setAdmin(updated);
+                        inform(updated.warning ?? '设置已保存', !!updated.warning);
+                      });
+                    }}
+                  >
+                    <h3>中转站设置</h3>
+                    <label>
+                      中转站名称
+                      <input
+                        required
+                        maxLength={80}
+                        value={form.stationName}
+                        onChange={(e) => setForm({ ...form, stationName: e.target.value })}
+                      />
+                    </label>
+                    <div className="form-grid">
+                      <label>
+                        中转站端口
+                        <input
+                          type="number"
+                          required
+                          min={1024}
+                          max={65535}
+                          disabled={admin.running}
+                          value={form.port}
+                          onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                        />
+                        <small>关闭中转站后可修改</small>
+                      </label>
+                      <label>
+                        接收缓冲结束后保留时间（小时）
+                        <input
+                          type="number"
+                          required
+                          min={0.01}
+                          max={720}
+                          step="any"
+                          value={form.retentionHours}
+                          onChange={(e) =>
+                            setForm({ ...form, retentionHours: Number(e.target.value) })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <Button type="submit" kind="primary" disabled={busy}>
+                      保存设置
+                    </Button>
+                  </form>
                 </div>
                 <div className="pairing-panel">
                   {admin.running ? (
@@ -2257,228 +2354,136 @@ export default function App() {
               </p>
             </>
           )}
-          {page === 'settings' && (
-            <>
-              <div className="identity-panel">
-                <div className="identity-heading">
-                  <DeviceAvatar
-                    id={boot?.deviceId ?? mobileId.current}
-                    name={boot?.deviceName ?? deviceName}
-                    size={40}
-                  />
-                  <div>
-                    <h3>设备身份</h3>
-                    <strong>
-                      {boot?.deviceName ?? deviceName}
-                      <DeviceTag platform={boot?.platform ?? browserPlatform()} />
-                    </strong>
-                  </div>
-                </div>
-                <div className="identity-details">
-                  <div className="identity-code">
-                    <code>{boot?.deviceId ?? mobileId.current}</code>
-                    <Button
-                      title="复制设备标识符"
-                      onClick={() => void run(() => copy(boot?.deviceId ?? mobileId.current))}
-                    >
-                      <Copy size={16} />
-                    </Button>
-                  </div>
-                  <p>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</p>
-                </div>
+          {page === 'settings' && !desktop && (
+            <section className="panel mobile-device-settings">
+              <h2>设备身份</h2>
+              <DeviceAvatar id={mobileId.current} name={deviceName} size={48} />
+              <label>
+                设备名称
+                <input
+                  required
+                  maxLength={80}
+                  value={deviceName}
+                  onChange={(e) => setDeviceName(e.target.value)}
+                />
+              </label>
+              <div className="identity-code">
+                <code>{mobileId.current}</code>
+                <Button
+                  title="复制设备标识符"
+                  onClick={() => void run(() => copy(mobileId.current))}
+                >
+                  <Copy size={16} />
+                </Button>
+              </div>
+              <div className="actions">
+                <Button
+                  kind="primary"
+                  disabled={busy}
+                  onClick={() => void run(() => saveDeviceName(deviceName))}
+                >
+                  保存设置
+                </Button>
                 <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>
                   更换设备身份
                 </Button>
               </div>
-              <section className="panel settings-panel">
-                <ScrollArea
-                  memoryKey="settings"
-                  className="settings-body"
-                  tabIndex={0}
-                  aria-label="设置内容"
-                >
-                  <form
-                    id="settings-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void run(async () => {
-                        let warning: string | undefined;
-                        if (desktop) {
-                          const updated = await management('/settings', form);
-                          setAdmin(updated);
-                          warning = updated.warning;
-                          if (session && connected)
-                            await request(session.base, session.token, '/api/device', {
-                              name: form.deviceName,
-                            }).catch(() => {});
-                          setDeviceName(form.deviceName);
-                          setBoot((b) => (b ? { ...b, deviceName: form.deviceName } : b));
-                        } else {
-                          save('relay3-device-name', deviceName);
-                          if (session && connected)
-                            await request(session.base, session.token, '/api/device', {
-                              name: deviceName,
-                            }).catch(() => {});
-                        }
-                        inform(warning ?? '设置已保存', !!warning);
-                      });
-                    }}
-                  >
-                    <div className={desktop ? 'form-grid' : 'device-name-field'}>
-                      <label>
-                        设备名称
-                        <input
-                          required
-                          maxLength={80}
-                          value={desktop ? form.deviceName : deviceName}
-                          onChange={(e) =>
-                            desktop
-                              ? setForm({ ...form, deviceName: e.target.value })
-                              : setDeviceName(e.target.value)
-                          }
-                        />
-                      </label>
-                      {desktop && (
-                        <label>
-                          中转站名称
-                          <input
-                            aria-label="中转站名称"
-                            required
-                            maxLength={80}
-                            value={form.stationName}
-                            onChange={(e) => setForm({ ...form, stationName: e.target.value })}
-                          />
-                          <small>供连接的设备识别，与本机设备名称独立。</small>
-                        </label>
-                      )}
-                    </div>
-                    {desktop && (
-                      <>
-                        <div className="form-grid">
-                          <label>
-                            中转站端口
-                            <input
-                              type="number"
-                              min={1024}
-                              max={65535}
-                              required
-                              disabled={admin?.running}
-                              value={form.port}
-                              onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
-                            />
-                            <small>关闭中转站后可修改</small>
-                          </label>
-                          <label>
-                            接收缓冲结束后保留时间（小时）
-                            <input
-                              type="number"
-                              min={0.01}
-                              max={720}
-                              step="any"
-                              required
-                              value={form.retentionHours}
-                              onChange={(e) =>
-                                setForm({ ...form, retentionHours: Number(e.target.value) })
-                              }
-                            />
-                            <small>应用于已完成缓存</small>
-                          </label>
-                        </div>
-                        {(['cacheDir', 'receiveDir'] as const).map((k) => (
-                          <label key={k}>
-                            {k === 'cacheDir' ? '中转缓存位置' : '接收文件保存位置'}
-                            <div className="path-input">
-                              <input readOnly value={form[k]} />
-                              <Button
-                                disabled={k === 'cacheDir' && admin?.running}
-                                onClick={() =>
-                                  void run(async () => {
-                                    const p = await window.relay3!.pickDirectory();
-                                    if (p) setForm((f) => ({ ...f, [k]: p }));
-                                  })
-                                }
-                              >
-                                <FolderOpen size={17} />
-                                选择
-                              </Button>
-                            </div>
-                            <small>
-                              {k === 'cacheDir'
-                                ? '关闭中转站后可迁移到空目录。'
-                                : '同名文件自动编号。'}
-                            </small>
-                          </label>
-                        ))}
-                      </>
-                    )}
-                  </form>
-                  {desktop && (
-                    <details className="note diagnostic-panel">
-                      <summary>诊断日志</summary>
-                      <p>
-                        异常自动记录在本机，日志轮转保留约 30
-                        MB。导出包含系统信息和已有崩溃转储，不自动上传。
-                      </p>
-                      <small>崩溃转储可能包含进程内存，请仅分享给信任的排查人员。</small>
-                      <div className="identity-code">
-                        <Button
-                          title="复制日志路径"
-                          onClick={() => void run(() => copy(diagnosticState?.path ?? ''))}
-                        >
-                          <Copy size={16} />
-                        </Button>
-                        <code>{diagnosticState?.path}</code>
-                      </div>
-                      <small>占用 {sizes(diagnosticState?.bytes ?? 0)}</small>
-                      <div className="actions">
-                        <Button
-                          onClick={() => void run(() => window.relay3!.openDirectory('logs'))}
-                        >
-                          打开日志目录
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            void run(async () => {
-                              const saved = await window.relay3!.exportDiagnostics();
-                              if (saved) inform('诊断日志已导出');
-                            })
-                          }
-                        >
-                          导出诊断日志
-                        </Button>
-                        <Button
-                          kind="danger"
-                          onClick={() =>
-                            void run(async () => {
-                              if (await window.relay3!.clearDiagnostics()) {
-                                setDiagnosticState(await window.relay3!.diagnosticInfo());
-                                inform('诊断日志已清理');
-                              }
-                            })
-                          }
-                        >
-                          清理日志
-                        </Button>
-                      </div>
-                    </details>
-                  )}
-                  {!desktop && (
-                    <div className="note">
-                      <Smartphone size={18} />
-                      <p>下载位置由系统决定，保存后请确认收到。</p>
-                    </div>
-                  )}
-                </ScrollArea>
-                <div className="settings-actions">
-                  <Button type="submit" form="settings-form" kind="primary" disabled={busy}>
-                    保存设置
-                  </Button>
-                </div>
-              </section>
-            </>
+              <small>更换后需重新配对，旧身份的密文无法解密。</small>
+            </section>
           )}
         </main>
       </div>
+      {modal === 'identity' && (
+        <Modal title="设备身份" dismissible={false} onClose={() => setModal(null)}>
+          <form
+            className="identity-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(() => saveDeviceName(identityName));
+            }}
+          >
+            <DeviceAvatar id={boot?.deviceId ?? mobileId.current} name={identityName} size={64} />
+            <label>
+              设备名称
+              <input
+                required
+                maxLength={80}
+                value={identityName}
+                onChange={(e) => setIdentityName(e.target.value)}
+              />
+            </label>
+            <label>
+              身份 ID
+              <div className="identity-code">
+                <code>{boot?.deviceId ?? mobileId.current}</code>
+                <Button
+                  title="复制设备标识符"
+                  onClick={() => void run(() => copy(boot?.deviceId ?? mobileId.current))}
+                >
+                  <Copy size={16} />
+                </Button>
+              </div>
+            </label>
+            <small>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</small>
+            <div className="actions">
+              <Button type="submit" kind="primary" disabled={busy}>
+                保存设备名称
+              </Button>
+              <Button kind="danger" disabled={busy} onClick={() => setModal('resetIdentity')}>
+                更换设备身份
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {modal === 'diagnostics' && desktop && (
+        <Modal title="诊断日志" dismissible={false} onClose={() => setModal(null)}>
+          <div className="diagnostic-panel">
+            <p>
+              异常自动记录在本机，日志轮转保留约 30 MB。导出包含系统信息和已有崩溃转储，不自动上传。
+            </p>
+            <small>崩溃转储可能包含进程内存，请仅分享给信任的排查人员。</small>
+            <div className="identity-code">
+              <Button
+                title="复制日志路径"
+                onClick={() => void run(() => copy(diagnosticState?.path ?? ''))}
+              >
+                <Copy size={16} />
+              </Button>
+              <code>{diagnosticState?.path}</code>
+            </div>
+            <small>占用 {sizes(diagnosticState?.bytes ?? 0)}</small>
+            <div className="actions">
+              <Button onClick={() => void run(() => window.relay3!.openDirectory('logs'))}>
+                打开日志目录
+              </Button>
+              <Button
+                onClick={() =>
+                  void run(async () => {
+                    const saved = await window.relay3!.exportDiagnostics();
+                    if (saved) inform('诊断日志已导出');
+                  })
+                }
+              >
+                导出诊断日志
+              </Button>
+              <Button
+                kind="danger"
+                onClick={() =>
+                  void run(async () => {
+                    if (await window.relay3!.clearDiagnostics()) {
+                      setDiagnosticState(await window.relay3!.diagnosticInfo());
+                      inform('诊断日志已清理');
+                    }
+                  })
+                }
+              >
+                清理日志
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {modal === 'connect' && (
         <Modal
           title="连接中转站"
@@ -2759,6 +2764,8 @@ export default function App() {
         </Modal>
       )}
       {modal &&
+        modal !== 'identity' &&
+        modal !== 'diagnostics' &&
         modal !== 'storageLocations' &&
         modal !== 'about' &&
         modal !== 'connect' &&

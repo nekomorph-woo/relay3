@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { createAvatar } from 'avatarka';
 
-// 固定协议和设备种子，只在当前组件内存中生成 SVG；不保存图片或头像数据。
+// 固定协议和设备名称种子，只在当前组件内存中生成 SVG；不保存图片或头像数据。
 export function DeviceAvatar({
-  id,
   name,
   size = 32,
   className = '',
@@ -15,12 +14,12 @@ export function DeviceAvatar({
 }) {
   const svg = useMemo(
     () =>
-      createAvatar('folks', id, {
+      createAvatar('folks', name, {
         namespace: 'relay3-device-v1',
         palette: 'coast',
         backgroundShape: 'rounded',
       }).svg,
-    [id],
+    [name],
   );
   return (
     <span

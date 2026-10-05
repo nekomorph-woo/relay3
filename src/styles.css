@@ -4851,3 +4851,73 @@ textarea {
     }
   }
 }
+
+/* 身份和诊断作为侧栏工具入口，服务端配置留在所属页面。 */
+.identity-trigger {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.identity-trigger:hover {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.identity-trigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.identity-form,
+.mobile-device-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.identity-form > .device-avatar {
+  align-self: center;
+}
+.identity-form .identity-code {
+  min-width: 0;
+}
+.identity-form code {
+  overflow-wrap: anywhere;
+}
+.station-settings {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.station-settings h3 {
+  margin: 0;
+}
+.station-settings > .button {
+  align-self: flex-start;
+}
+.station-settings .form-grid {
+  gap: 16px;
+}
+.diagnostic-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.diagnostic-panel p {
+  margin: 0;
+}
+.diagnostic-panel .identity-code {
+  margin: 0;
+}
+.diagnostic-panel code {
+  overflow-wrap: anywhere;
+}
+.sidebar-utilities > span {
+  display: inline-flex;
+}
