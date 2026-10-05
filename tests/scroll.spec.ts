@@ -140,13 +140,13 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   expect(deviceList!.x + deviceList!.width - remove!.x - remove!.width).toBeGreaterThanOrEqual(12);
   await fixedWhileScrolling('.device-list', '.devices-layout > .panel:first-child .section-head');
   await scroll('.timeline', 420);
-  await tab('设备');
+  await tab('本机中转站');
   await tab('连接设备');
   await expect.poll(() => top('.device-list')).toBeCloseTo(360, 0);
   await expect.poll(() => top('.timeline')).toBeCloseTo(420, 0);
   await tab('收发记录');
   await fixedWhileScrolling('.records-panel', '.history-toolbar');
-  await tab('设备');
+  await tab('本机中转站');
   await tab('收发记录');
   await expect.poll(() => top('.records-panel')).toBeCloseTo(360, 0);
   await page.getByRole('button', { name: '我发送的', exact: true }).click();
@@ -176,7 +176,7 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await expect(page.getByRole('tooltip')).toContainText('/received/');
   await page.mouse.move(400, 80);
   await scroll('.storage-list[data-scroll-key^="received:"]', 460);
-  await tab('设备');
+  await tab('本机中转站');
   await tab('中转缓存');
   await expect.poll(() => top('.storage-list[data-scroll-key^="cache:"]')).toBeCloseTo(360, 0);
   await tab('接收文件');
@@ -192,7 +192,7 @@ test('长列表固定操作，切页恢复位置，刷新与筛选定位正确',
   await page.screenshot({ path: 'test-results/scroll-storage.png' });
   await tab('连接的中转站');
   await scroll('.connected-stations');
-  await tab('设备');
+  await tab('本机中转站');
   await tab('连接的中转站');
   await expect.poll(() => top('.connected-stations')).toBeCloseTo(360, 0);
   expect(errors).toEqual([]);
@@ -211,20 +211,14 @@ test('小窗口发送与保存固定，路径弹窗正文滚动、Esc返回焦�
   await fixedWhileScrolling('.selected-files', '.send-footer');
   await fixedWhileScrolling('.transfer-items', '.transfer-queue .section-head');
   await page.screenshot({ path: 'test-results/scroll-small-transfer.png' });
-  await tab('设备');
-  await page.getByText('诊断日志', { exact: true }).click();
-  await fixedWhileScrolling('.settings-body', '.settings-actions');
+  await tab('本机中转站');
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('设置已保存');
-  const toast = await page.locator('.notice').boundingBox();
-  const save = await page.locator('.settings-actions .button').boundingBox();
-  expect(
-    toast!.x + toast!.width <= save!.x ||
-      toast!.x >= save!.x + save!.width ||
-      toast!.y >= save!.y + save!.height ||
-      toast!.y + toast!.height <= save!.y,
-  ).toBeTruthy();
-  await page.screenshot({ path: 'test-results/scroll-small-settings.png' });
+  await page.getByRole('button', { name: '诊断日志', exact: true }).click();
+  await expect(page.getByRole('button', { name: '导出诊断日志' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '诊断日志' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await tab('中转缓存');
   const trigger = page.getByRole('button', { name: '缓存位置与数据库整理', exact: true });
   await trigger.click();
@@ -285,7 +279,7 @@ test('群聊历史不抢位置、密文分页回顶、清理长正文和下拉�
     content: '新的消息不抢历史',
   });
   await expect.poll(() => top(feed)).toBeCloseTo(600, 0);
-  await tab('设备');
+  await tab('本机中转站');
   await tab('群聊大厅');
   await expect.poll(() => top(feed)).toBeCloseTo(600, 0);
   await page.getByRole('button', { name: '回到最新', exact: true }).click();

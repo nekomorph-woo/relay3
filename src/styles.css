@@ -3513,7 +3513,7 @@ main.native-page {
 .diagnostic-panel.note {
   display: block;
   padding: 16px 0 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-rule);
 }
 .diagnostic-panel summary {
   cursor: pointer;
@@ -4889,7 +4889,7 @@ textarea {
 .station-settings {
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-rule);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -4920,4 +4920,11 @@ textarea {
 }
 .sidebar-utilities > span {
   display: inline-flex;
+}
+
+.identity-id {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--text-sm);
 }

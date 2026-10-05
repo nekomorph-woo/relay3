@@ -408,10 +408,13 @@ export default function App() {
   });
   const [identityName, setIdentityName] = useState('');
   async function saveDeviceName(name: string) {
-    const value = name.trim();
+    let value = name.trim();
     if (!value) throw new Error('请输入设备名称');
     if (desktop) {
-      setAdmin(await management('/settings', { deviceName: value }));
+      const updated = await management('/settings', { deviceName: value });
+      value = updated.settings.deviceName;
+      setAdmin(updated);
+      setIdentityName(value);
       setBoot((b) => (b ? { ...b, deviceName: value } : b));
     } else save('relay3-device-name', value);
     setDeviceName(value);
@@ -1561,16 +1564,8 @@ export default function App() {
                   </div>
                   <dl className="station-facts">
                     <div>
-                      <dt>监听端口</dt>
-                      <dd>{admin.settings.port}</dd>
-                    </div>
-                    <div>
                       <dt>在线设备</dt>
                       <dd>{admin.devices.filter((d) => d.online).length}</dd>
-                    </div>
-                    <div>
-                      <dt>文件保留</dt>
-                      <dd>接收缓冲结束后 {admin.settings.retentionHours} 小时</dd>
                     </div>
                   </dl>
                   <form
@@ -2412,8 +2407,8 @@ export default function App() {
                 onChange={(e) => setIdentityName(e.target.value)}
               />
             </label>
-            <label>
-              身份 ID
+            <div className="identity-id">
+              <span>身份 ID</span>
               <div className="identity-code">
                 <code>{boot?.deviceId ?? mobileId.current}</code>
                 <Button
@@ -2423,7 +2418,7 @@ export default function App() {
                   <Copy size={16} />
                 </Button>
               </div>
-            </label>
+            </div>
             <small>更换后需重新配对，旧身份的密文无法解密。文件与收发历史保留。</small>
             <div className="actions">
               <Button type="submit" kind="primary" disabled={busy}>

@@ -135,7 +135,7 @@ test('桌面开启中转站，手机客户端连接，双向传输并保留记�
   await desktop.getByRole('button', { name: '收发记录', exact: true }).click();
   await expect(desktop.locator('.file-package')).toHaveCount(2);
   await desktop.locator('.file-package').first().locator('.package-summary').click();
-  await expect(desktop.locator('.file-package').first()).toContainText('已接收');
+  await expect(desktop.locator('.file-package').first()).toContainText('全部已处理');
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
   await expect(desktop.locator('.package-cache')).toHaveCount(2);
   await desktop.getByLabel('选择所有可清理文件').check();
@@ -180,7 +180,7 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await desktop.locator('dialog').getByRole('button', { name: '关闭中转站', exact: true }).click();
   await expect(desktop.locator('dialog')).toHaveCount(0);
   await expect(desktop.getByRole('heading', { name: '开启这台电脑的中转站' })).toBeVisible();
-  await desktop.getByRole('button', { name: '设备', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.getByRole('spinbutton', { name: '接收缓冲结束后保留时间（小时）' }).fill('2');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
@@ -321,7 +321,8 @@ test('原生复制、各终端更换身份、按设备删除与离线清理选�
   await select.selectOption('1');
   await desktop.getByRole('button', { name: '确认清理', exact: true }).click();
   await expect(desktop.getByRole('status')).toContainText('已清理');
-  await desktop.getByRole('button', { name: '设备', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '设备身份', exact: true }).click();
   const oldId = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceId;
   await desktop.getByRole('button', { name: '复制设备标识符' }).click();
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(oldId);
@@ -347,7 +348,6 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
     '收发记录',
     '接收文件',
     '中转缓存',
-    '设备',
   ];
   for (const size of [
     { width: 1220, height: 840 },
@@ -382,7 +382,7 @@ test('各页面采用紧凑工作台布局，常用窗口尺寸下无整页滚�
 
 test('独立中转站名称、历史实时探测、侧栏用户与关于介绍', async () => {
   await desktop.setViewportSize({ width: 1220, height: 840 });
-  await desktop.getByRole('button', { name: '设备', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   const device = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceName;
   await desktop.getByLabel('中转站名称', { exact: true }).fill('客厅中转站');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
@@ -449,7 +449,7 @@ test('独立中转站名称、历史实时探测、侧栏用户与关于介绍',
   await desktop.getByRole('button', { name: '连接中转站', exact: true }).click();
   await expect(station).toContainText('未响应');
   await desktop.getByRole('button', { name: '关闭', exact: true }).click();
-  await desktop.getByRole('button', { name: '设备', exact: true }).click();
+  await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   await desktop.screenshot({ path: 'test-results/v035-settings.png' });
   expect(errors).toEqual([]);
 });

@@ -52,8 +52,7 @@ test('统一异常采集、崩溃记录、脱敏导出与确认清理', async ()
     ])
       expect(text).toContain(event);
     expect(text).not.toContain('TEST_SECRET');
-    await page.getByRole('button', { name: '设备', exact: true }).click();
-    await page.locator('summary').filter({ hasText: '诊断日志' }).click();
+    await page.getByRole('button', { name: '诊断日志', exact: true }).click();
     await expect(page.getByRole('button', { name: '导出诊断日志' })).toBeVisible();
     await page.getByRole('button', { name: '导出诊断日志' }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/v036-diagnostics-settings.png' });
