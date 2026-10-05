@@ -2052,6 +2052,14 @@ main.chat-workspace {
   gap: var(--space-sm);
   color: var(--color-accent);
   font-size: var(--text-sm);
+  height: 36px;
+  line-height: 20px;
+}
+.chat-compose-options > button > svg {
+  display: block;
+}
+.chat-compose-options > button > span {
+  line-height: 20px;
 }
 .chat-input-label {
   position: absolute;
@@ -3999,6 +4007,16 @@ main.native-page {
   margin: var(--space-sm) 0;
 }
 .receive-buffer small {
+  color: var(--color-muted);
+}
+.receive-buffer-title,
+.receive-buffer-title > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.receive-buffer-title > span {
+  cursor: help;
   color: var(--color-muted);
 }
 .receive-buffer > div {

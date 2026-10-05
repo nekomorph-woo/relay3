@@ -432,11 +432,12 @@ export function ChatHall({
                 className="chat-encrypt-action"
                 onClick={() => setMode('encrypted')}
               >
-                <LockKeyhole size={17} /> 发送密文
+                <LockKeyhole size={17} />
+                <span>发送密文</span>
               </button>
               <button type="button" onClick={() => setFileComposer(true)}>
                 <FileUp size={17} />
-                发送文件
+                <span>发送文件</span>
               </button>
               <span className="subtle">文字原样展示</span>
             </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, CircleHelp } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 import { DeviceAvatar } from './DeviceAvatar';
 import { DeviceTag } from './DeviceTag';
 interface RecipientDevice {
@@ -183,7 +184,16 @@ export function ReceiveBuffer({
 }) {
   return (
     <label className="receive-buffer">
-      接收缓冲时间<small>上传完成后开始计时</small>
+      <span className="receive-buffer-title">
+        接收缓冲时间
+        <Tooltip
+          aria-label="接收缓冲时间说明"
+          text="从文件完整上传到中转站开始计时，接收设备可在这段时间内接收或拒绝（10 分钟～24 小时，默认 24 小时）。超时未处理后不能再操作；已下载的文件仍可在缓存清理前重新下载。"
+        >
+          <CircleHelp size={14} />
+        </Tooltip>
+      </span>
+      <small>上传完成后开始计时</small>
       <div>
         <input
           aria-label="接收缓冲分钟数"

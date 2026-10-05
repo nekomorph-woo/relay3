@@ -95,6 +95,9 @@ test.afterAll(async () => {
 });
 test('普通多目标离线发送、上传完成后独立接收、服务端任务和长站名', async () => {
   await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
+  await desktop.getByLabel('接收缓冲时间说明').hover();
+  await expect(desktop.getByRole('tooltip')).toContainText('从文件完整上传到中转站开始计时');
+  await desktop.mouse.move(500, 70);
   await expect(desktop.locator('.delivery-recipients')).toContainText('离线电脑');
   const devices = (await admin('/status')).devices;
   for (const name of ['在线手机', '离线电脑']) {
@@ -168,8 +171,24 @@ test('本机文件删除后可重新下载、下载时间更新与缓存清理�
 test('群聊文件名加密、手机大厅接收、Emoji本地加载和输入留白', async () => {
   await desktop.getByRole('button', { name: '群聊大厅', exact: true }).click();
   await phone.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  for (const action of ['发送密文', '发送文件']) {
+    const button = desktop
+      .locator('.chat-compose-options')
+      .getByRole('button', { name: action, exact: true });
+    const iconBox = (await button.locator('svg').boundingBox())!;
+    const textBox = (await button.locator('span').boundingBox())!;
+    expect(Math.abs(iconBox.y + iconBox.height / 2 - textBox.y - textBox.height / 2)).toBeLessThan(
+      1,
+    );
+  }
+  await desktop
+    .locator('.chat-compose-options')
+    .screenshot({ path: 'test-results/delivery-composer-actions.png' });
   await desktop.getByRole('button', { name: '发送文件', exact: true }).click();
   const modal = desktop.getByRole('dialog', { name: '发送文件', exact: true });
+  await modal.getByLabel('接收缓冲时间说明').hover();
+  await expect(desktop.getByRole('tooltip')).toContainText('超时未处理后不能再操作');
+  await desktop.mouse.move(500, 70);
   await modal.getByLabel('选择群聊文件').setInputFiles({
     name: '加密文件名.txt',
     mimeType: 'text/plain',
