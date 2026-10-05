@@ -832,8 +832,9 @@ export default function App() {
               <Info size={17} />
             </button>
             <button
-              title="跳转Relay3 Github"
+              className="github-tooltip-trigger"
               aria-label="项目 GitHub"
+              aria-describedby="sidebar-github-tooltip"
               onClick={() =>
                 desktop
                   ? void run(() => window.relay3!.openGithub())
@@ -845,6 +846,9 @@ export default function App() {
               }
             >
               <Github size={17} />
+              <span id="sidebar-github-tooltip" role="tooltip" className="github-tooltip">
+                跳转Relay3 Github
+              </span>
             </button>
           </div>
         </div>

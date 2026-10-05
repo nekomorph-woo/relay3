@@ -3252,6 +3252,31 @@ main.native-page {
   background: var(--color-paper-2);
   color: var(--color-ink);
 }
+.github-tooltip-trigger {
+  position: relative;
+}
+.github-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 4px 12px var(--color-overlay);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  visibility: hidden;
+  pointer-events: none;
+}
+.github-tooltip-trigger:hover .github-tooltip,
+.github-tooltip-trigger:focus-visible .github-tooltip {
+  visibility: visible;
+}
 .station-name {
   display: block;
   margin: var(--space-sm) 0;
