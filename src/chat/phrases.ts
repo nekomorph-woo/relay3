@@ -103,3 +103,11 @@ export const phrases = [
 export function hiddenPhrase() {
   return phrases[crypto.getRandomValues(new Uint32Array(1))[0] % phrases.length];
 }
+
+// 文件占位只保存在当前页面内存中；跨组件、切页与列表刷新复用，重新加载后重新随机。
+const filePhrases = new Map<string, string>();
+export function hiddenFileName(stationId: string, fileId: string) {
+  const key = JSON.stringify([stationId, fileId]);
+  if (!filePhrases.has(key)) filePhrases.set(key, hiddenPhrase());
+  return filePhrases.get(key)!;
+}

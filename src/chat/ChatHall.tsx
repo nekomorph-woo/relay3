@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { request, stored, save, date, uuid, type Session } from '../api';
 import { generateIdentity, validIdentity, encryptMessage, decryptMessage } from './crypto';
-import { hiddenPhrase } from './phrases';
+import { hiddenPhrase, hiddenFileName } from './phrases';
 import type { ChatIdentity, ChatMessage, ChatDevice } from './types';
 import { ChatCleanup } from './ChatCleanup';
 import { ChatDialog } from './ChatDialog';
@@ -145,7 +145,11 @@ export function ChatHall({
           })
         : null;
     if (content !== null) return { text: content, open: true };
-    if (m.kind === 'file' || m.kind === 'package') return { text: '未知文件', open: false };
+    if (m.kind === 'file' || m.kind === 'package')
+      return {
+        text: hiddenFileName(session.stationId, m.packageId ?? m.fileId ?? String(m.id)),
+        open: false,
+      };
     if (!phrases.current.has(m.id)) phrases.current.set(m.id, hiddenPhrase());
     return { text: phrases.current.get(m.id)!, open: false };
   }
@@ -735,7 +739,7 @@ export function ChatHall({
                 {value.open ? (
                   <DeliveryTitle files={packageFiles[m.packageId!] ?? []} session={session} />
                 ) : (
-                  '未知文件'
+                  value.text
                 )}
               </span>
             </button>
@@ -766,7 +770,7 @@ export function ChatHall({
                     ))}
                 </>
               ) : (
-                <UnknownFile cleaned={!!fileStates[m.fileId!]?.cleanedAt} />
+                <UnknownFile text={value.text} cleaned={!!fileStates[m.fileId!]?.cleanedAt} />
               )}
             </div>
           ) : (

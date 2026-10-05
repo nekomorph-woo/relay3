@@ -1,3 +1,4 @@
+import { phrases } from '../src/chat/phrases';
 import { setBrowserDeviceName } from './device-ui';
 import {
   test,
@@ -240,6 +241,13 @@ test('提醒进入指定文件包；群聊无权限只展示通用入口，窄�
   await other.getByRole('button', { name: '关闭密文汇总' }).click();
   const unknown = other.locator('.bbs-message').filter({ hasText: '检查包权限' });
   await expect(unknown.getByRole('button', { name: '未知文件' })).toBeDisabled();
+  const placeholder = await unknown.locator('.chat-package-button').innerText();
+  expect(phrases).toContain(placeholder);
+  await other.getByRole('button', { name: '文件传输', exact: true }).click();
+  await other.getByRole('button', { name: '群聊大厅', exact: true }).click();
+  await expect(unknown.locator('.chat-package-button')).toHaveText(placeholder);
+  await other.screenshot({ path: 'test-results/package-hidden-phrase.png' });
+
   await expect(unknown).not.toContainText('个文件');
   await expect(unknown).not.toContainText('私密');
   await other.close();

@@ -1,3 +1,4 @@
+import { hiddenFileName } from '../chat/phrases';
 import { useEffect, useState } from 'react';
 import {
   FileBox,
@@ -169,7 +170,7 @@ export function FilePackageCard({
         <FileBox size={24} />
         <span>
           <strong>
-            <DeliveryTitle files={p.files} session={session} />
+            <DeliveryTitle files={p.files} session={session} stationId={p.stationId} />
           </strong>
           <small>
             {sizes(p.files.reduce((n, f) => n + f.size, 0))} ·{' '}
@@ -346,6 +347,7 @@ export function FilePackageCard({
                         <RecipientFile
                           key={file.id}
                           file={file}
+                          stationId={p.stationId}
                           recipientId={d.id}
                           session={session}
                         />
@@ -559,13 +561,14 @@ function PackageFileRow({
   onError: (message: string) => void;
   retry: (file: File) => Promise<void>;
 }) {
-  const [name, setName] = useState(f.name);
+  const hidden = f.envelope ? hiddenFileName(p.stationId, f.id) : f.name;
+  const [name, setName] = useState(f.envelope ? hidden : f.name);
   useEffect(() => {
     let dead = false;
     if (session)
       void resolveFileName(f, session)
         .then((value) => {
-          if (!dead) setName(value ?? '未知文件');
+          if (!dead) setName(value ?? hidden);
         })
         .catch(() => {});
     return () => {
@@ -668,19 +671,22 @@ function PackageFileRow({
 function RecipientFile({
   file,
   recipientId,
+  stationId,
   session,
 }: {
   file: SharedFile & { transfers: Transfer[] };
   recipientId: string;
+  stationId: string;
   session?: Session;
 }) {
-  const [name, setName] = useState(file.name);
+  const hidden = file.envelope ? hiddenFileName(stationId, file.id) : file.name;
+  const [name, setName] = useState(file.envelope ? hidden : file.name);
   useEffect(() => {
     let dead = false;
     if (session)
       void resolveFileName(file, session)
         .then((value) => {
-          if (!dead) setName(value ?? '未知文件');
+          if (!dead) setName(value ?? hidden);
         })
         .catch(() => {});
     return () => {

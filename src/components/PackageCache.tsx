@@ -63,7 +63,11 @@ export function PackageCache({
           <FileBox size={24} />
           <span>
             <strong>
-              {p ? <DeliveryTitle files={p.files} session={session} /> : '正在读取文件…'}
+              {p ? (
+                <DeliveryTitle files={p.files} session={session} stationId={p.stationId} />
+              ) : (
+                '正在读取文件…'
+              )}
             </strong>
             <small>
               {sizes(entries.reduce((sum, e) => sum + e.bytes, 0))}

@@ -1,3 +1,4 @@
+import { hiddenFileName } from '../chat/phrases';
 import { deliverFile } from '../fileDelivery';
 import { useEffect, useState } from 'react';
 import {
@@ -47,10 +48,14 @@ export async function resolveFileName(f: SharedFile, session: Session) {
     : null;
 }
 export function useTransferName(t: FileNameSource, session?: Session) {
-  const [name, setName] = useState(t.name);
+  const fallback =
+    t.chatMessageId && t.fileId
+      ? hiddenFileName(t.stationId ?? session?.stationId ?? '', t.fileId)
+      : t.name;
+  const [name, setName] = useState(fallback);
   useEffect(() => {
     let dead = false;
-    setName(t.name);
+    setName(fallback);
     if (!t.chatMessageId || !t.fileId || !session) return;
     const key = `${session.stationId}:${session.id}:${t.fileId}`;
     if (!sharedRequests.has(key))
@@ -79,7 +84,7 @@ export function useTransferName(t: FileNameSource, session?: Session) {
                 packageId: f.packageId,
               })
             : null;
-        if (!dead) setName(value ?? '未知文件');
+        if (!dead) setName(value ?? fallback);
       })
       .catch(() => {});
     return () => {
@@ -335,10 +340,11 @@ export function FileTask({
     </div>
   );
 }
-export function UnknownFile({ cleaned = false }: { cleaned?: boolean }) {
+export function UnknownFile({ cleaned = false, text }: { cleaned?: boolean; text: string }) {
   return (
     <span className="file-task-status">
-      {cleaned ? <FileWarning size={17} /> : <FileQuestion size={17} />}未知文件
+      {cleaned ? <FileWarning size={17} /> : <FileQuestion size={17} />}
+      {text}
       {cleaned ? ' · 中转缓存已清理' : ''}
     </span>
   );
