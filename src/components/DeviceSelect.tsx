@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { DeviceTag } from './DeviceTag';
 export function DeviceSelect({
@@ -19,7 +19,42 @@ export function DeviceSelect({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  useLayoutEffect(() => {
+    if (!open || !optionsRef.current || !trigger.current) return;
+    const list = optionsRef.current;
+    // 顶层原生 popover 避免被弹窗正文或面板滚动边界裁切。
+    list.showPopover();
+    const place = () => {
+      const rect = trigger.current!.getBoundingClientRect();
+      const below = innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const upwards = below < 160 && above > below;
+      const height = Math.min(240, upwards ? above : below);
+      Object.assign(list.style, {
+        position: 'fixed',
+        inset: 'auto',
+        margin: '0',
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+        maxHeight: `${Math.max(40, height)}px`,
+        top: upwards ? 'auto' : `${rect.bottom + 4}px`,
+        bottom: upwards ? `${innerHeight - rect.top + 4}px` : 'auto',
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    const reposition = (event: Event) => {
+      if (!list.contains(event.target as Node)) place();
+    };
+    document.addEventListener('scroll', reposition, true);
+    return () => {
+      list.hidePopover();
+      window.removeEventListener('resize', place);
+      document.removeEventListener('scroll', reposition, true);
+    };
+  }, [open]);
   const selected = devices.find((d) => d.id === value);
   useEffect(() => {
     const close = (e: PointerEvent) => {
@@ -84,12 +119,15 @@ export function DeviceSelect({
       {open && (
         <div
           id={id}
+          ref={optionsRef}
+          popover="manual"
           className="device-select-options"
           role="listbox"
           aria-label={label}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault();
+              e.stopPropagation();
               setOpen(false);
               trigger.current?.focus();
             }
@@ -99,9 +137,12 @@ export function DeviceSelect({
                 e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
               );
               const current = options.indexOf(document.activeElement as HTMLButtonElement);
-              options[
-                (current + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
-              ]?.focus();
+              const next =
+                options[
+                  (current + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
+                ];
+              next?.focus({ preventScroll: true });
+              next?.scrollIntoView({ block: 'nearest' });
             }
           }}
         >

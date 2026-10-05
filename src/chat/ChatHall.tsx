@@ -93,6 +93,7 @@ export function ChatHall({
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   const scrollPosition = useRef(0);
+  const positioningFeed = useRef(false);
   const cipherFeed = useRef<HTMLDivElement>(null);
   const api = <T,>(url: string, body?: unknown) =>
     request<T>(session.base, session.token, '/api/chat' + url, body);
@@ -137,12 +138,17 @@ export function ChatHall({
       setError('这个方向已没有更多消息');
       return;
     }
+    positioningFeed.current = true;
     setRows(page.items);
     phrases.current.clear();
     if (ack && visibleRef.current) await acknowledge(page.items.at(-1)?.id ?? page.latestId);
     requestAnimationFrame(() => {
+      if (current !== sequence.current) return;
       if (feed.current && visibleRef.current)
         feed.current.scrollTop = scroll === 'end' ? feed.current.scrollHeight : 0;
+      requestAnimationFrame(() => {
+        if (current === sequence.current) positioningFeed.current = false;
+      });
     });
   }
   useEffect(() => {
@@ -226,7 +232,7 @@ export function ChatHall({
     )
       return;
     void load(`&upper=${latestId}`, 'end', true).catch((e) => setError(e.message));
-  }, [latestId, visible, connected, identity]);
+  }, [latestId, visible, connected, identity, tracking]);
   useEffect(() => {
     if (visible && preserveView)
       requestAnimationFrame(() => {
@@ -649,7 +655,7 @@ export function ChatHall({
             onScroll={() => {
               const el = feed.current;
               if (el && visible) scrollPosition.current = el.scrollTop;
-              if (el)
+              if (el && !positioningFeed.current)
                 setTracking(
                   (rows.at(-1)?.id ?? 0) >= latestId &&
                     el.scrollHeight - el.scrollTop - el.clientHeight < 80,

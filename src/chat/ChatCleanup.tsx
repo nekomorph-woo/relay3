@@ -1,5 +1,5 @@
 import { reportException } from '../diagnostics';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { date } from '../api';
 import { DeviceTag } from '../components/DeviceTag';
@@ -53,6 +53,7 @@ export function ChatCleanup({
     ...(mode !== 'all' ? { mode } : {}),
   };
   const signature = JSON.stringify(filter);
+  const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     void management('/chat/catalog')
       .then((r) => setSenders(r.senders))
@@ -62,7 +63,13 @@ export function ChatCleanup({
     setPreview(null);
     let dead = false;
     void management('/chat/list', { filter, page })
-      .then((r) => !dead && setResult(r))
+      .then((r) => {
+        if (dead) return;
+        setResult(r);
+        requestAnimationFrame(() => {
+          if (!dead && body.current) body.current.scrollTop = 0;
+        });
+      })
       .catch((e) => !dead && setError(e.message));
     return () => {
       dead = true;
@@ -90,7 +97,7 @@ export function ChatCleanup({
             <X size={18} />
           </button>
         </div>
-        <div className="chat-modal-body">
+        <div className="chat-modal-body" ref={body}>
           <div className="chat-clean-controls">
             <p>
               筛选条件同时生效（AND）。可叠加时间、发送设备、消息模式和多选消息。收发文件记录与磁盘文件保留。

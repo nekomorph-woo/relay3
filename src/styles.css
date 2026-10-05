@@ -2113,7 +2113,7 @@ main.chat-workspace {
   margin: 0 0 var(--space-lg);
   padding: var(--space-md);
   border-radius: var(--radius-sm);
-  max-height: 190px;
+  max-height: none;
 }
 .chat-native-dialog button {
   white-space: nowrap;
@@ -2751,9 +2751,21 @@ main.native-page {
   }
 }
 @media (max-width: 768px) {
+  main.native-page:not(.chat-workspace) {
+    overflow-y: auto;
+  }
+  .transfer-screen {
+    flex: none;
+  }
   .transfer-screen.has-session {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(120px, 1fr) auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .transfer-screen .transfer-queue,
+  .transfer-screen .transfer-items,
+  .transfer-screen .selected-files {
+    overflow: visible;
+    flex: none;
   }
   .transfer-screen .composer {
     align-self: stretch;
@@ -2865,7 +2877,7 @@ main.native-page {
 }
 .native-page > .notice {
   top: auto;
-  bottom: var(--space-xl);
+  bottom: calc(var(--space-xl) + 80px);
   right: var(--space-xl);
   pointer-events: none;
 }
@@ -2874,7 +2886,7 @@ main.native-page {
 }
 @media (max-width: 600px) {
   .native-page > .notice {
-    bottom: 84px;
+    bottom: 196px;
     right: var(--space-lg);
   }
 }
@@ -3053,6 +3065,7 @@ main.native-page {
 }
 .settings-workspace .settings-panel {
   flex: 1;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3228,6 +3241,10 @@ main.native-page {
   height: 64px;
 }
 @media (max-width: 600px) {
+  .settings-workspace .settings-panel {
+    flex: none;
+    overflow: visible;
+  }
   .sidebar > .device-self,
   .sidebar > .sidebar-bottom {
     display: none;

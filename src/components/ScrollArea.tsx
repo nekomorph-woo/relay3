@@ -74,6 +74,7 @@ export function ScrollArea({
       }}
       data-scroll-key={memoryKey}
       onScroll={(event) => {
+        savePosition();
         onScroll?.(event);
       }}
     >
