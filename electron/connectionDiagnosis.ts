@@ -5,11 +5,18 @@ export async function diagnoseConnection(
   raw: string,
   expected?: string,
   fetcher = fetch,
+  signal?: AbortSignal,
 ): Promise<ConnectionDiagnosis> {
+  try {
+    stationAddress(raw);
+  } catch {
+    return diagnoseHttp(raw, expected, signal, fetcher);
+  }
+  signal?.throwIfAborted();
   const base = stationAddress(raw),
     url = new URL(base);
   const tcp = await new Promise<{ ok: boolean; detail: string }>((resolve) => {
-    const socket = createConnection({ host: url.hostname, port: Number(url.port || 80) });
+    const socket = createConnection({ host: url.hostname, port: Number(url.port || 80), signal });
     const finish = (ok: boolean, detail: string) => {
       socket.destroy();
       resolve({ ok, detail });
@@ -26,7 +33,7 @@ export async function diagnoseConnection(
       ),
     );
   });
-  const report = await diagnoseHttp(base, expected, undefined, fetcher);
+  const report = await diagnoseHttp(base, expected, signal, fetcher);
   report.steps.splice(1, 0, {
     name: 'TCP 端口',
     state: tcp.ok ? 'ok' : 'failed',

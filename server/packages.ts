@@ -47,6 +47,7 @@ export class FilePackages {
       CREATE TABLE IF NOT EXISTS package_files(packageId TEXT NOT NULL,fileId TEXT PRIMARY KEY,position INTEGER NOT NULL,removedAt INTEGER);
       CREATE INDEX IF NOT EXISTS package_members ON package_files(packageId,position);
       CREATE TABLE IF NOT EXISTS package_reminders(packageId TEXT NOT NULL,deviceId TEXT NOT NULL,remindedAt INTEGER NOT NULL,PRIMARY KEY(packageId,deviceId));
+      CREATE TABLE IF NOT EXISTS deadline_reminders(packageId TEXT NOT NULL,deviceId TEXT NOT NULL,PRIMARY KEY(packageId,deviceId));
       CREATE TABLE IF NOT EXISTS remote_packages(id TEXT PRIMARY KEY,data TEXT NOT NULL);`);
   }
   all(): FilePackage[] {
@@ -381,6 +382,55 @@ export class FilePackages {
       if (!this.service.closing) void this.service.files.maintenance();
     });
     return this.view(this.get(id), deviceId);
+  }
+  deadlineReminders(now = Date.now()) {
+    for (const p of this.all()) {
+      if (p.state !== 'ready' || !p.receiveDeadline || now >= p.receiveDeadline) continue;
+      const advance = p.bufferMinutes >= 60 ? 30 * 60000 : 2 * 60000;
+      if (now < p.receiveDeadline - advance) continue;
+      const pending = p.recipients.filter((d) =>
+        this.members(p.id).some(({ fileId }) => {
+          const f = this.service.files.get(fileId);
+          return (
+            !f.cleanedAt &&
+            this.service.files
+              .transfers(fileId)
+              .some(
+                (t) =>
+                  t.recipientId === d.id &&
+                  ['pending', 'ready', 'awaiting-confirm'].includes(t.status),
+              )
+          );
+        }),
+      );
+      if (!pending.length) continue;
+      for (const deviceId of [p.senderId, ...pending.map((d) => d.id)]) {
+        const client = this.service.clients.get(deviceId);
+        if (
+          !client ||
+          client.socket.readyState !== 1 ||
+          !this.authorized(p, deviceId) ||
+          this.service.store.db
+            .prepare('SELECT 1 FROM deadline_reminders WHERE packageId=? AND deviceId=?')
+            .get(p.id, deviceId)
+        )
+          continue;
+        this.service.store.db
+          .prepare('INSERT INTO deadline_reminders VALUES (?,?)')
+          .run(p.id, deviceId);
+        client.socket.send(
+          JSON.stringify({
+            type: 'package-reminder',
+            stationId: p.stationId,
+            packageId: p.id,
+            senderName: p.senderName,
+            reason: 'deadline',
+            recipientCount: pending.length,
+            deadline: p.receiveDeadline,
+          }),
+        );
+      }
+    }
   }
   async maintenance(now: number) {
     for (const p of this.all())

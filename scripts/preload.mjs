@@ -4,8 +4,18 @@ writeFileSync(
   `
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
+ pickFolderFile: () => ipcRenderer.invoke('pick-folder-file'),
+ nativeHash: id => ipcRenderer.invoke('native-hash', id),
+ releaseNative: id => ipcRenderer.invoke('native-release', id),
+ cancelNative: id => ipcRenderer.invoke('native-cancel', id),
+ uploadNative: input => ipcRenderer.invoke('native-upload', input),
+ reuseSource: input => ipcRenderer.invoke('reuse-source', input),
+ onNativeProgress: callback => { const h = (_e,data) => callback(data); ipcRenderer.on('native-progress',h); return () => ipcRenderer.removeListener('native-progress',h); },
+ notifyStation: input => ipcRenderer.invoke('notify-station', input),
+ onNotification: callback => { const h = (_e,data) => callback(data); ipcRenderer.on('notification-open',h); return () => ipcRenderer.removeListener('notification-open',h); },
  clientActivity: (id, active) => ipcRenderer.invoke('client-activity', id, active),
- diagnoseConnection: (raw, expected) => ipcRenderer.invoke('connection-diagnose', raw, expected),
+ diagnoseConnection: (raw, expected, id) => ipcRenderer.invoke('connection-diagnose', raw, expected, id),
+ cancelDiagnosis: id => ipcRenderer.invoke('connection-diagnose-cancel', id),
  startDiscovery: () => ipcRenderer.invoke('discovery-start'),
  discoverySnapshot: () => ipcRenderer.invoke('discovery-snapshot'),
  refreshDiscovery: () => ipcRenderer.invoke('discovery-refresh'),

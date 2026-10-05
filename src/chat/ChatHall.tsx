@@ -1,3 +1,4 @@
+import { FolderPicker } from '../components/FolderPicker';
 import { EmojiButton } from '../emoji/EmojiButton';
 import { EmojiText } from '../emoji/EmojiText';
 import { FileTask, UnknownFile, type LocalFile } from '../components/FileTask';
@@ -16,6 +17,7 @@ import { reportException } from '../diagnostics';
 import { useEffect, useRef, useState } from 'react';
 import {
   Copy,
+  Search,
   LockKeyhole,
   LockKeyholeOpen,
   Send,
@@ -90,6 +92,20 @@ export function ChatHall({
     [chatFiles, setChatFiles] = useState<File[]>([]),
     [fileRecipients, setFileRecipients] = useState<string[]>([]),
     [fileBuffer, setFileBuffer] = useState(stored('relay3-receive-buffer', 1440));
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail.stationId !== session.stationId) return;
+      setChatFiles(detail.files);
+      setFileRecipients(detail.p.recipients.map((d: any) => d.id));
+      setFileBuffer(detail.p.bufferMinutes);
+      setRemark(detail.p.remark);
+      setRemarkStyle(detail.p.remarkStyle);
+      setFileComposer(true);
+    };
+    window.addEventListener('relay3-resend-chat', listener);
+    return () => window.removeEventListener('relay3-resend-chat', listener);
+  }, [session.stationId]);
   const fileDraftIds = useRef(new WeakMap<File, string>());
   const [packageFiles, setPackageFiles] = useState<Record<string, SharedFile[]>>({});
   const [fileStates, setFileStates] = useState<Record<string, SharedFile>>({});
@@ -111,6 +127,42 @@ export function ChatHall({
     [modalRange, setModalRange] = useState<{ after?: number; upper?: number }>({});
   const [cipherRows, setCipherRows] = useState<MessagePage>({ items: [], total: 0, latestId: 0 });
   const [infoExpanded, setInfoExpanded] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false),
+    [searchQuery, setSearchQuery] = useState(''),
+    [searchMode, setSearchMode] = useState('all'),
+    [searchKind, setSearchKind] = useState('all'),
+    [searchSender, setSearchSender] = useState(''),
+    [searchFrom, setSearchFrom] = useState(''),
+    [searchTo, setSearchTo] = useState('');
+  const [searchResult, setSearchResult] = useState<{
+    items: ChatMessage[];
+    more: boolean;
+    nextBeforeId?: number;
+    limited?: boolean;
+    indexReady?: boolean;
+  }>({ items: [], more: false });
+  const [searchBusy, setSearchBusy] = useState(false),
+    [searchError, setSearchError] = useState('');
+  async function searchHistory(beforeId?: number) {
+    setSearchBusy(true);
+    setSearchError('');
+    try {
+      const params = new URLSearchParams({
+        q: searchQuery,
+        mode: searchMode,
+        kind: searchKind,
+        senderId: searchSender,
+      });
+      if (beforeId) params.set('beforeId', String(beforeId));
+      if (searchFrom) params.set('from', String(new Date(searchFrom).getTime()));
+      if (searchTo) params.set('to', String(new Date(searchTo).getTime() + 86400000 - 1));
+      setSearchResult(await api('/search?' + params));
+    } catch (e: any) {
+      setSearchError(e.message);
+    } finally {
+      setSearchBusy(false);
+    }
+  }
   const [cleanup, setCleanup] = useState(false),
     [tracking, setTracking] = useState(true);
   const feed = useRef<HTMLDivElement>(null),
@@ -827,6 +879,16 @@ export function ChatHall({
             </div>
           </header>
           <div className="chat-toolbar">
+            {window.relay3 && (
+              <button onClick={() => window.dispatchEvent(new Event('relay3-open-todos'))}>
+                <History size={15} />
+                全部待办
+              </button>
+            )}
+            <button disabled={!connected} onClick={() => setSearchOpen(true)}>
+              <Search size={15} />
+              搜索历史
+            </button>
             <button
               disabled={!snapshot.unread || busy}
               onClick={() => {
@@ -977,6 +1039,12 @@ export function ChatHall({
                     }}
                   />
                 </label>
+                <FolderPicker
+                  stationId={session.stationId}
+                  disabled={busy}
+                  onPicked={(f) => setChatFiles((old) => [...old, f])}
+                  onError={setError}
+                />
                 <div className="chat-file-selection">
                   {chatFiles.map((f, i) => (
                     <div className="file-line" key={i}>
@@ -1125,6 +1193,131 @@ export function ChatHall({
                 下一页
               </button>
             </div>
+          </section>
+        </ChatDialog>
+      )}
+      {searchOpen && visible && (
+        <ChatDialog label="搜索大厅历史" dismissible={false} onClose={() => setSearchOpen(false)}>
+          <section className="panel chat-search-dialog">
+            <header className="dialog-head">
+              <h2>
+                <Search size={18} />
+                搜索历史
+              </h2>
+              <button aria-label="关闭历史搜索" onClick={() => setSearchOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void searchHistory();
+              }}
+            >
+              <label>
+                关键词
+                <input
+                  required
+                  maxLength={100}
+                  placeholder="明文内容或公开备注"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </label>
+              <div className="form-grid">
+                <label>
+                  发送者
+                  <select value={searchSender} onChange={(e) => setSearchSender(e.target.value)}>
+                    <option value="">全部设备</option>
+                    {devices.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  模式
+                  <select value={searchMode} onChange={(e) => setSearchMode(e.target.value)}>
+                    <option value="all">全部模式</option>
+                    <option value="plain">普通模式</option>
+                    <option value="encrypted">密文模式（公开备注）</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-grid">
+                <label>
+                  消息类型
+                  <select value={searchKind} onChange={(e) => setSearchKind(e.target.value)}>
+                    <option value="all">全部类型</option>
+                    <option value="text">文字</option>
+                    <option value="package">文件发送</option>
+                    <option value="file">旧文件消息</option>
+                  </select>
+                </label>
+                <label>
+                  开始日期
+                  <input
+                    type="date"
+                    value={searchFrom}
+                    onChange={(e) => setSearchFrom(e.target.value)}
+                  />
+                </label>
+                <label>
+                  结束日期
+                  <input
+                    type="date"
+                    value={searchTo}
+                    onChange={(e) => setSearchTo(e.target.value)}
+                  />
+                </label>
+              </div>
+              <button className="primary" disabled={searchBusy || !connected}>
+                {searchBusy ? '搜索中…' : '搜索'}
+              </button>
+            </form>
+            <small>
+              密文正文和文件名不在中转站解密；可以搜索其公开备注。
+              {searchResult.limited ? '短关键词仅查询最近一万条。' : ''}
+              {searchResult.indexReady === false ? '历史索引正在建立，结果暂未完整。' : ''}
+            </small>
+            {searchError && (
+              <p role="alert" className="error-text">
+                {searchError}
+              </p>
+            )}
+            <ScrollArea
+              className="chat-search-results"
+              memoryKey={`chat-search:${session.stationId}`}
+              aria-label="历史搜索结果"
+            >
+              {searchResult.items.map((m) => (
+                <div key={m.id}>
+                  {renderMessage(m)}
+                  <button
+                    onClick={() => {
+                      setTracking(false);
+                      void load(`&after=${Math.max(0, m.id - 1)}`, 'start', false)
+                        .then(() => setSearchOpen(false))
+                        .catch((e) => setSearchError(e.message));
+                    }}
+                  >
+                    跳转到消息
+                  </button>
+                </div>
+              ))}
+              {!searchBusy && !searchResult.items.length && (
+                <p className="subtle">输入关键词，查找明文消息和公开备注。</p>
+              )}
+            </ScrollArea>
+            {searchResult.more && (
+              <button
+                disabled={searchBusy}
+                onClick={() => void searchHistory(searchResult.nextBeforeId)}
+              >
+                下一页
+              </button>
+            )}
           </section>
         </ChatDialog>
       )}

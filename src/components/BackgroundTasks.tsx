@@ -1,3 +1,4 @@
+import { preparationTasks } from '../preparation';
 import { PreparationProgress } from './PreparationProgress';
 import { TransferName } from './FileTask';
 import type { Session } from '../api';
@@ -49,7 +50,9 @@ export function BackgroundTasks({
     pop.current.style.bottom = `${innerHeight - r.top + 8}px`;
   }, [open]);
   const failed = tasks.some((t) => t.state === 'failed');
-  const count = tasks.filter((t) => t.state === 'running').length;
+  const count =
+    tasks.filter((t) => t.state === 'running').length +
+    preparationTasks().filter((t) => t.state === 'running').length;
   const icons = { upload: Upload, download: Download, scan: ScanLine, cleanup: Trash2 };
   return (
     <div className="background-task-control">
@@ -79,7 +82,7 @@ export function BackgroundTasks({
             </button>
           </header>
           <div className="background-task-list">
-            <PreparationProgress />
+            <PreparationProgress history />
             {tasks.length ? (
               tasks.map((t) => {
                 const Icon = icons[t.kind];

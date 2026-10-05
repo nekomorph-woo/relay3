@@ -16,6 +16,8 @@ export async function fileHash(
   progress?: (bytes: number) => void,
 ): Promise<string> {
   signal?.throwIfAborted();
+  const nativeId = (file as File & { nativeId?: string }).nativeId;
+  if (nativeId) return window.relay3!.nativeHash(nativeId);
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./hash.worker.ts', import.meta.url), { type: 'module' });
     const finish = () => {
@@ -56,6 +58,28 @@ export async function uploadPackageFile(
   )
     throw new Error('文件与原任务不一致，请选择原文件');
   options.signal?.throwIfAborted();
+  const nativeId = (file as File & { nativeId?: string }).nativeId;
+  if (nativeId) {
+    const cancel = () => void window.relay3!.cancelNative(nativeId);
+    const stop = window.relay3!.onNativeProgress((e) => {
+      if (e.id === nativeId) options.progress?.(e.bytes);
+    });
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      return await window.relay3!.uploadNative({
+        nativeId,
+        base: session.base,
+        token: session.token,
+        fileId: original.id,
+        size: original.size,
+        hash: original.expectedSha256!,
+        stationId: session.stationId,
+      });
+    } finally {
+      stop();
+      options.signal?.removeEventListener('abort', cancel);
+    }
+  }
   await window.relay3?.rememberSource({ stationId: session.stationId, fileId: original.id, file });
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -199,6 +223,11 @@ export async function deliverPackage(
         {},
       );
     await rememberPackages([result]);
+    if (result.state === 'ready')
+      for (const f of files) {
+        const id = (f as File & { nativeId?: string }).nativeId;
+        if (id) await window.relay3!.releaseNative(id);
+      }
     finishPreparation(
       task,
       result.state === 'uploading' ? '部分文件上传失败，请在详情中重试' : undefined,

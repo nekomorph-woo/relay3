@@ -1,5 +1,5 @@
 import { ScrollArea } from './ScrollArea';
-import { Radio, Unplug, Trash2, ArrowUpRight } from 'lucide-react';
+import { ScanEye, Radio, Unplug, Trash2, ArrowUpRight } from 'lucide-react';
 import type { ClientConnection } from '../useConnections';
 import type { Session } from '../api';
 export const connectionLabels = {
@@ -17,6 +17,7 @@ export function ConnectedStations({
   onJoin,
   onDisconnect,
   onForget,
+  onCheck,
 }: {
   connections: Record<string, ClientConnection>;
   saved: Session[];
@@ -25,6 +26,7 @@ export function ConnectedStations({
   onSelect: (id: string) => void;
   onJoin: (base: string) => void;
   onDisconnect: (id: string) => void;
+  onCheck?: (session: Session) => void;
   onForget: (id: string) => void;
 }) {
   const stations = [...new Map(saved.map((s) => [s.stationId, s])).values()];
@@ -76,6 +78,17 @@ export function ConnectedStations({
               )}
             </div>
             <div className="actions">
+              {onCheck && (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={busy}
+                  onClick={() => onCheck(session)}
+                >
+                  <ScanEye size={16} />
+                  检查连接
+                </button>
+              )}
               {connection ? (
                 <>
                   <button

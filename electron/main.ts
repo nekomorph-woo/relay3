@@ -1,3 +1,4 @@
+import { NativeFiles } from './nativeFiles';
 import { capacitySnapshot, assertCapacity } from '../server/capacity';
 import {
   initializeDiagnostics,
@@ -22,6 +23,7 @@ import {
   Tray,
   powerSaveBlocker,
   powerMonitor,
+  Notification,
 } from 'electron';
 import { generateIdentity, validIdentity } from '../src/chat/crypto';
 import { RelayService } from '../server/service';
@@ -49,6 +51,7 @@ const appIconPath = path.join(dirname, '../dist/relay3-desktop.png');
 app.setName('Relay3');
 app.setPath('userData', process.env.RELAY3_DATA_DIR ?? path.join(app.getPath('appData'), 'relay3'));
 let service: RelayService;
+let nativeFiles: NativeFiles;
 // 与页面使用同一套直连 Chromium 网络栈，避免发现探测和连接走不同代理设置。
 const discovery = new StationDiscovery(undefined, (base, signal) =>
   probeStation(base, signal, (url, options) => net.fetch(url.toString(), options)),
@@ -60,6 +63,7 @@ let tray: Tray | undefined;
 let powerBlocker: number | undefined;
 let runtimeTimer: NodeJS.Timeout | undefined;
 const clientActivities = new Set<string>();
+const connectionChecks = new Map<string, AbortController>();
 function showWindow() {
   if (window) {
     window.show();
@@ -69,6 +73,9 @@ function showWindow() {
 }
 function updateRuntime() {
   if (!service || quitting) return;
+  void nativeFiles
+    ?.cleanup()
+    .catch((e) => diagnostic('warn', 'prepared.cleanup-failed', { error: e }));
   const settings = service.store.settings;
   if (settings.backgroundMode && !tray) {
     const icon = nativeImage.createFromPath(appIconPath).resize({ width: 18, height: 18 });
@@ -197,6 +204,16 @@ else {
         path.join(dirname, '../dist'),
         path.join(app.getPath('downloads'), 'relay3'),
       );
+      nativeFiles = new NativeFiles(
+        path.join(app.getPath('userData'), 'prepared-files'),
+        (id, stage, bytes, total) =>
+          window?.webContents.send('native-progress', { id, stage, bytes, total }),
+      );
+      // 上次进程退出留下的压缩包不复用，任务历史和用户原目录均保留。
+      rmSync(path.join(app.getPath('userData'), 'prepared-files'), {
+        recursive: true,
+        force: true,
+      });
       await session.defaultSession.setProxy({ mode: 'direct' });
       service.onHubChanged = () =>
         discovery.publish(
@@ -231,6 +248,32 @@ else {
             throw error;
           }
         });
+      handler('notify-station', (input: { stationId: string; page: string; body: string }) => {
+        const saved = Object.values(service.store.clientSessions()).find(
+          (s) => s.stationId === input.stationId,
+        );
+        if (
+          !saved ||
+          !['chat', 'transfer'].includes(input.page) ||
+          typeof input.body !== 'string' ||
+          input.body.length > 240 ||
+          !Notification.isSupported()
+        )
+          return;
+        const n = new Notification({
+          title: `Relay3 · ${saved.stationName || '其他'}`,
+          body: input.body,
+          icon: appIconPath,
+        });
+        n.on('click', () => {
+          showWindow();
+          window?.webContents.send('notification-open', {
+            stationId: input.stationId,
+            page: input.page,
+          });
+        });
+        n.show();
+      });
       handler('client-activity', (id: string, active: boolean) => {
         if (typeof id !== 'string' || id.length > 80 || typeof active !== 'boolean')
           throw new Error('任务标识无效');
@@ -239,11 +282,23 @@ else {
         updateRuntime();
       });
       handler('diagnostic-info', diagnosticInfo);
-      handler('connection-diagnose', (raw: string, expected?: string) =>
-        diagnoseConnection(raw, expected, (url, options) =>
-          net.fetch(url instanceof URL ? url.toString() : url, options),
-        ),
-      );
+      handler('connection-diagnose', async (raw: string, expected?: string, id = 'check') => {
+        if (typeof id !== 'string' || id.length > 80 || connectionChecks.size >= 4)
+          throw new Error('检查繁忙');
+        const c = new AbortController();
+        connectionChecks.set(id, c);
+        try {
+          return await diagnoseConnection(
+            raw,
+            expected,
+            (url, options) => net.fetch(url instanceof URL ? url.toString() : url, options),
+            c.signal,
+          );
+        } finally {
+          connectionChecks.delete(id);
+        }
+      });
+      handler('connection-diagnose-cancel', (id: string) => connectionChecks.get(id)?.abort());
       handler('discovery-start', () => discovery.start());
       handler('discovery-snapshot', () => discovery.snapshot());
       handler('discovery-refresh', () => discovery.refresh());
@@ -302,6 +357,81 @@ else {
         savedHubs: service.store.clientSessions(),
         clientView: service.store.clientView(),
       }));
+      handler('pick-folder-file', async () => {
+        const picked = await dialog.showOpenDialog(window!, { properties: ['openDirectory'] });
+        if (picked.canceled) return null;
+        clientActivities.add('folder');
+        updateRuntime();
+        try {
+          return await nativeFiles.folder(picked.filePaths[0], async (excluded) => {
+            const result = await dialog.showMessageBox(window!, {
+              type: 'warning',
+              title: '部分条目无法打包',
+              message: `${excluded.length} 个条目将排除`,
+              detail: excluded.slice(0, 20).join('\n'),
+              buttons: ['取消', '排除这些条目并继续'],
+              defaultId: 0,
+              cancelId: 0,
+            });
+            return result.response === 1;
+          });
+        } finally {
+          clientActivities.delete('folder');
+          updateRuntime();
+        }
+      });
+      handler('native-hash', (id: string) => nativeFiles.hash(id));
+      handler('native-release', (id: string) => nativeFiles.release(id));
+      handler('native-cancel', (id: string) => nativeFiles.cancel(id));
+      handler(
+        'native-upload',
+        async (input: {
+          nativeId: string;
+          base: string;
+          token: string;
+          fileId: string;
+          size: number;
+          hash: string;
+          stationId: string;
+        }) => {
+          const base = localUrl(input.base),
+            saved = Object.values(service.store.clientSessions()).find(
+              (s) => s.base === base && s.token === input.token && s.stationId === input.stationId,
+            );
+          if (!saved || !/^[a-zA-Z0-9-]{16,80}$/.test(input.fileId))
+            throw new Error('上传凭证或文件标识无效');
+          const source = nativeFiles.resolve(input.nativeId).source;
+          service.store.db
+            .prepare('INSERT OR REPLACE INTO settings VALUES (?,?)')
+            .run(`source:${input.stationId}:${input.fileId}`, JSON.stringify(source));
+          await nativeFiles.upload(
+            input.nativeId,
+            base,
+            input.token,
+            input.fileId,
+            input.size,
+            input.hash,
+          );
+        },
+      );
+      handler('reuse-source', async (input: { stationId: string; fileIds: string[] }) => {
+        if (!Array.isArray(input.fileIds) || input.fileIds.length > 100)
+          throw new Error('文件清单无效');
+        const files = [];
+        let missing = 0;
+        for (const id of input.fileIds) {
+          const row = service.store.db
+            .prepare('SELECT value FROM settings WHERE key=?')
+            .get(`source:${input.stationId}:${id}`) as { value: string } | undefined;
+          try {
+            if (!row) throw new Error();
+            files.push(await nativeFiles.source(JSON.parse(row.value)));
+          } catch {
+            missing++;
+          }
+        }
+        return { files, missing };
+      });
       handler('pick-directory', async () => {
         const result = await dialog.showOpenDialog(window!, {
           properties: ['openDirectory', 'createDirectory'],
@@ -555,21 +685,24 @@ else {
       diagnostic('error', 'app.shutdown-timeout');
       app.exit(1);
     }, 5000);
+    for (const c of connectionChecks.values()) c.abort();
     for (const c of downloads.values()) c.abort();
     // 销毁渲染进程，同时终止全部客户端 WebSocket、XHR 和重连计时器。
     window?.destroy();
     const transfersSettled = (async () => {
       while (downloads.size) await new Promise<void>((resolve) => setTimeout(resolve, 10));
     })();
-    void Promise.allSettled([service?.close(transfersSettled), discovery.close()]).then(
-      (results) => {
-        for (const result of results)
-          if (result.status === 'rejected')
-            diagnostic('error', 'app.shutdown-failed', { error: result.reason });
-        clearTimeout(deadline);
-        shutdownComplete = true;
-        app.quit();
-      },
-    );
+    void Promise.allSettled([
+      service?.close(transfersSettled),
+      discovery.close(),
+      nativeFiles?.close(),
+    ]).then((results) => {
+      for (const result of results)
+        if (result.status === 'rejected')
+          diagnostic('error', 'app.shutdown-failed', { error: result.reason });
+      clearTimeout(deadline);
+      shutdownComplete = true;
+      app.quit();
+    });
   });
 }

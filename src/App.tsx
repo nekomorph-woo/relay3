@@ -1,3 +1,7 @@
+import { StationTodos } from './components/StationTodos';
+import { stationTodos } from './todos';
+import { useStationNotifications } from './useStationNotifications';
+import { FolderPicker, asNativeFile } from './components/FolderPicker';
 import { PreparationProgress } from './components/PreparationProgress';
 import {
   diagnoseHttp,
@@ -222,6 +226,7 @@ export default function App() {
     stationId: string;
     packageId: string;
     senderName: string;
+    reason?: string;
   } | null>(null);
   const [reminderDialog, setReminderDialog] = useState<{
     stationId: string;
@@ -231,7 +236,20 @@ export default function App() {
   const multi = useConnections(desktop, inform);
   const { session, hub, connected } = multi;
   useEffect(() => {
-    const remind = (event: Event) => setPackageReminder((event as CustomEvent).detail);
+    const remind = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      setPackageReminder(detail);
+      if (
+        detail.reason === 'deadline' &&
+        window.relay3 &&
+        !stored<string[]>('relay3-muted-stations', []).includes(detail.stationId)
+      )
+        void window.relay3.notifyStation({
+          stationId: detail.stationId,
+          page: 'transfer',
+          body: '有文件即将超过接收截止时间，请查看待办',
+        });
+    };
     window.addEventListener('relay3-package-reminder', remind);
     return () => window.removeEventListener('relay3-package-reminder', remind);
   }, []);
@@ -677,18 +695,80 @@ export default function App() {
       color: { dark: '#263544', light: '#fafbfc' },
     }).then(setQr);
   }, [admin?.running, admin?.pairingToken, JSON.stringify(admin?.addresses), address]);
+  useEffect(() => {
+    const listener = async (event: Event) => {
+      const { p, session: original } = (event as CustomEvent).detail as {
+        p: PackageView;
+        session: Session;
+      };
+      if (!multi.current.current[original.stationId] || p.senderId !== original.id) return;
+      multi.select(original.stationId);
+      setReminderDialog(null);
+      try {
+        const reused = window.relay3
+          ? await window.relay3.reuseSource({
+              stationId: p.stationId,
+              fileIds: p.files.map((f) => f.id),
+            })
+          : { files: [], missing: p.files.length };
+        const files = reused.files.map(asNativeFile);
+        if (p.chat) {
+          setPage('chat');
+          window.dispatchEvent(
+            new CustomEvent('relay3-resend-chat', { detail: { stationId: p.stationId, p, files } }),
+          );
+        } else {
+          setPage('transfer');
+          setTransferDrafts((old) => ({ ...old, [p.stationId]: { recipient: '', files } }));
+          setRecipientIds((old) => ({ ...old, [p.stationId]: p.recipients.map((d) => d.id) }));
+          setBufferMinutes(p.bufferMinutes);
+        }
+        inform(
+          reused.missing
+            ? `已填入原接收设备；${reused.missing} 个源文件或目录需要重新选择。原任务及期限不变。`
+            : '已恢复发送草稿，请确认后创建新的发送。',
+        );
+      } catch (e: any) {
+        inform(e.message, true);
+      }
+    };
+    window.addEventListener('relay3-resend', listener);
+    return () => window.removeEventListener('relay3-resend', listener);
+  }, []);
+  useStationNotifications(multi.connections, multi.activeId, page);
+  const [todosOpen, setTodosOpen] = useState(false);
+  useEffect(() => {
+    const listener = () => setTodosOpen(true);
+    window.addEventListener('relay3-open-todos', listener);
+    return () => window.removeEventListener('relay3-open-todos', listener);
+  }, []);
+  useEffect(
+    () =>
+      window.relay3?.onNotification(({ stationId, page }) => {
+        if (!multi.current.current[stationId]) return;
+        multi.select(stationId);
+        setPage(page as Page);
+      }),
+    [],
+  );
   const [connectionDiagnosis, setConnectionDiagnosis] = useState<ConnectionDiagnosis | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
-  async function checkConnection() {
+  const diagnosisController = useRef<{ id: string; controller: AbortController } | null>(null);
+  async function checkConnection(raw = connectUrl, expected = discoveredSelection?.stationId) {
+    const id = uuid(),
+      controller = new AbortController();
+    diagnosisController.current = { id, controller };
     setDiagnosing(true);
     try {
-      const expected = discoveredSelection?.stationId;
       setConnectionDiagnosis(
         await (window.relay3
-          ? window.relay3.diagnoseConnection(connectUrl, expected)
-          : diagnoseHttp(connectUrl, expected)),
+          ? window.relay3.diagnoseConnection(raw, expected, id)
+          : diagnoseHttp(raw, expected, controller.signal)),
       );
+    } catch (e: any) {
+      if (!controller.signal.aborted) throw e;
     } finally {
+      diagnosisController.current = null;
       setDiagnosing(false);
     }
   }
@@ -740,10 +820,16 @@ export default function App() {
       : { pairingToken: code };
     let result;
     try {
-      result = await request<any>(base, old?.token ?? '', '/api/join', {
-        ...body,
-        ...(old?.token ? {} : pairingBody),
-      });
+      result = await request<any>(
+        base,
+        old?.token ?? '',
+        '/api/join',
+        {
+          ...body,
+          ...(old?.token ? {} : pairingBody),
+        },
+        AbortSignal.timeout(6000),
+      );
     } catch (e: any) {
       if (!old?.token || e.status !== 401 || !code.trim()) {
         setConnectionDiagnosis({
@@ -754,7 +840,13 @@ export default function App() {
         });
         throw e;
       }
-      result = await request<any>(base, '', '/api/join', { ...body, ...pairingBody });
+      result = await request<any>(
+        base,
+        '',
+        '/api/join',
+        { ...body, ...pairingBody },
+        AbortSignal.timeout(6000),
+      );
     }
     await rememberConnection(base, result);
   }
@@ -1132,6 +1224,17 @@ export default function App() {
           <div className="page-head" hidden={page === 'chat' && !!session}>
             <h1>{pageInfo[page][0]}</h1>
             <div className="page-actions">
+              {desktop && (
+                <Button onClick={() => setTodosOpen(true)}>
+                  <History size={16} />
+                  全部待办 (
+                  {stationTodos(multi.connections).reduce(
+                    (n, s) => n + s.files.length + (s.unread ? 1 : 0),
+                    0,
+                  )}
+                  )
+                </Button>
+              )}
               {session ? (
                 <Button onClick={() => disconnect()} title="断开当前中转站">
                   <Unplug size={16} />
@@ -1159,7 +1262,11 @@ export default function App() {
           </div>
           {packageReminder && (
             <div className="package-reminder" role="status">
-              <span>{packageReminder.senderName} 提醒你接收文件</span>
+              <span>
+                {packageReminder.reason === 'deadline'
+                  ? '有文件即将超过接收截止时间'
+                  : `${packageReminder.senderName} 提醒你接收文件`}
+              </span>
               <button
                 onClick={() => {
                   setReminderDialog({
@@ -1256,6 +1363,12 @@ export default function App() {
                 setModal('connect');
               }}
               onDisconnect={disconnect}
+              onCheck={(s) => {
+                setConnectUrl(s.base);
+                setDiscoveredSelection(null);
+                setModal('connect');
+                void run(() => checkConnection(s.base, s.stationId));
+              }}
               onForget={(id) => {
                 setTargetStation(id);
                 setModal('forgetStation');
@@ -1482,6 +1595,12 @@ export default function App() {
                         disabled={!connected || busy}
                       />
                       <ReceiveBuffer value={bufferMinutes} onChange={setBufferMinutes} />
+                      <FolderPicker
+                        stationId={multi.activeId}
+                        disabled={busy || !connected}
+                        onPicked={(f) => setFiles((old) => [...old, f])}
+                        onError={(e) => inform(e, true)}
+                      />
                       <label
                         className="dropzone compact-file-picker"
                         onDragOver={(e) => {
@@ -2124,7 +2243,10 @@ export default function App() {
                       <HardDrive size={23} />
                       <p>中转文件占用</p>
                       <strong>{sizes(cache?.totalBytes ?? 0)}</strong>
-                      <small>磁盘可用 {sizes(cache?.freeBytes ?? 0)}</small>
+                      <small>
+                        磁盘可用 {sizes(cache?.freeBytes ?? 0)} · 已预留{' '}
+                        {sizes(cache?.committedBytes ?? 0)}
+                      </small>
                     </section>
                     <section className="panel">
                       <History size={23} />
@@ -2565,6 +2687,19 @@ export default function App() {
           </div>
         </Modal>
       )}
+      {todosOpen && (
+        <Modal title="全部中转站待办" dismissible={false} onClose={() => setTodosOpen(false)}>
+          <StationTodos
+            connections={multi.connections}
+            onOpen={(id, target, packageId) => {
+              multi.select(id);
+              setPage(target);
+              setTodosOpen(false);
+              if (packageId) setReminderDialog({ stationId: id, packageId });
+            }}
+          />
+        </Modal>
+      )}
       {modal === 'connect' && (
         <Modal
           title="连接中转站"
@@ -2646,10 +2781,23 @@ export default function App() {
             </label>
           </form>
           <div className="actions">
-            <Button disabled={diagnosing || busy} onClick={() => void run(checkConnection)}>
+            <Button disabled={diagnosing || busy} onClick={() => void run(() => checkConnection())}>
               <ScanEye size={16} />
               {diagnosing ? '检查中…' : '检查连接'}
             </Button>
+            {diagnosing && (
+              <Button
+                onClick={() => {
+                  const c = diagnosisController.current;
+                  if (c) {
+                    c.controller.abort();
+                    void window.relay3?.cancelDiagnosis(c.id);
+                  }
+                }}
+              >
+                取消检查
+              </Button>
+            )}
             {connectionDiagnosis && (
               <Button onClick={() => void run(() => copy(diagnosisText(connectionDiagnosis)))}>
                 <Copy size={16} />

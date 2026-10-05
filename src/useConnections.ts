@@ -120,10 +120,10 @@ export function useConnections(desktop: boolean, inform: (text: string, error?: 
       if (sockets.current.has(id)) continue;
       const session = connection.session;
       const stop = connectStation(session, {
-        reminder: (packageId, senderName) =>
+        reminder: (packageId, senderName, reason) =>
           window.dispatchEvent(
             new CustomEvent('relay3-package-reminder', {
-              detail: { stationId: session.stationId, packageId, senderName },
+              detail: { stationId: session.stationId, packageId, senderName, reason },
             }),
           ),
         state: (hub) => updateHub(id, hub),

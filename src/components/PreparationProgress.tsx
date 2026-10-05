@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { X, LoaderCircle } from 'lucide-react';
 import { preparationTasks, cancelPreparation } from '../preparation';
 import { sizes } from '../api';
-export function PreparationProgress({ stationId }: { stationId?: string }) {
+export function PreparationProgress({
+  stationId,
+  history = false,
+}: {
+  stationId?: string;
+  history?: boolean;
+}) {
   const [, refresh] = useState(0);
   useEffect(() => {
     const listener = () => refresh((n) => n + 1);
@@ -13,7 +19,9 @@ export function PreparationProgress({ stationId }: { stationId?: string }) {
       clearInterval(timer);
     };
   }, []);
-  const tasks = preparationTasks().filter((t) => !stationId || t.stationId === stationId);
+  const tasks = preparationTasks().filter(
+    (t) => (!stationId || t.stationId === stationId) && (history || t.state === 'running'),
+  );
   if (!tasks.length) return null;
   return (
     <section className="preparation-tasks" aria-label="本机发送准备任务" aria-live="polite">
@@ -26,6 +34,9 @@ export function PreparationProgress({ stationId }: { stationId?: string }) {
             </strong>
             <small>
               {t.stage} · {sizes(t.bytes)} / {sizes(t.total)}
+              {t.speed && t.speed > 0
+                ? ` · ${sizes(t.speed)}/秒 · 约 ${Math.max(1, Math.ceil((t.total - t.bytes) / t.speed))} 秒`
+                : ''}
             </small>
             {t.state === 'running' && <progress max={t.total || 1} value={t.bytes} />}
           </div>

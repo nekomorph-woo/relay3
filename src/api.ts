@@ -61,6 +61,8 @@ export interface CacheState {
   path: string;
   totalBytes: number;
   freeBytes: number;
+  committedBytes?: number;
+  availableBytes?: number;
   entries: {
     id: string;
     packageId?: string;
@@ -78,11 +80,35 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      pickFolderFile(): Promise<import('../electron/nativeFiles').NativeFile | null>;
+      nativeHash(id: string): Promise<string>;
+      releaseNative(id: string): Promise<void>;
+      cancelNative(id: string): Promise<void>;
+      uploadNative(input: {
+        nativeId: string;
+        base: string;
+        token: string;
+        fileId: string;
+        size: number;
+        hash: string;
+        stationId: string;
+      }): Promise<void>;
+      reuseSource(input: {
+        stationId: string;
+        fileIds: string[];
+      }): Promise<{ files: import('../electron/nativeFiles').NativeFile[]; missing: number }>;
+      onNativeProgress(
+        callback: (data: { id: string; stage: string; bytes: number; total: number }) => void,
+      ): () => void;
+      notifyStation(input: { stationId: string; page: string; body: string }): Promise<void>;
+      onNotification(callback: (data: { stationId: string; page: string }) => void): () => void;
       clientActivity(id: string, active: boolean): Promise<void>;
       diagnoseConnection(
         raw: string,
         expected?: string,
+        id?: string,
       ): Promise<import('./connectionDiagnosis').ConnectionDiagnosis>;
+      cancelDiagnosis(id: string): Promise<void>;
       startDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
       discoverySnapshot(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
       refreshDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
@@ -132,10 +158,12 @@ export async function request<T = any>(
   token: string,
   url: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   setDiagnosticTarget(base, token);
   try {
     const response = await fetch(base + url, {
+      signal,
       method: body === undefined ? 'GET' : 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

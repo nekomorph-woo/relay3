@@ -10,6 +10,8 @@ export default defineConfig({
     connection: 'src/connection.ts',
     connectionDiagnosis: 'src/connectionDiagnosis.ts',
     capacity: 'server/capacity.ts',
+    nativeFiles: 'electron/nativeFiles.ts',
+    chatSearchWorker: 'server/chatSearchWorker.ts',
   },
   format: ['esm'],
   outDir: 'dist-electron',

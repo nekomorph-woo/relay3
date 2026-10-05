@@ -538,3 +538,25 @@ test('整次发送预留尚未写入容量，取消释放预算，重启从清�
     await f.close();
   }
 });
+test('临近截止提醒持久去重，只通知在线未处理接收者与发送者，不改变D/T', async () => {
+  const f = await fixture();
+  try {
+    const body = f.manifest(['a']);
+    await f.call('/api/packages', f.a.token, body);
+    await f.upload(body, 0, 'a');
+    await f.call(`/api/packages/${body.id}/publish`, f.a.token, {});
+    const p = f.s.packages.get(body.id),
+      deadline = p.receiveDeadline,
+      expiry = p.expiresAt;
+    f.s.packages.deadlineReminders(deadline - 120001);
+    assert.equal(f.s.store.db.prepare('SELECT count(*) n FROM deadline_reminders').get().n, 0);
+    f.s.packages.deadlineReminders(deadline - 119999);
+    assert.equal(f.s.store.db.prepare('SELECT count(*) n FROM deadline_reminders').get().n, 2);
+    f.s.packages.deadlineReminders(deadline - 1000);
+    assert.equal(f.s.store.db.prepare('SELECT count(*) n FROM deadline_reminders').get().n, 2);
+    assert.equal(f.s.packages.get(body.id).receiveDeadline, deadline);
+    assert.equal(f.s.packages.get(body.id).expiresAt, expiry);
+  } finally {
+    await f.close();
+  }
+});

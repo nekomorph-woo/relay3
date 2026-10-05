@@ -62,7 +62,28 @@ export async function diagnoseHttp(
       signal: AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]),
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const info = await r.json();
+    if (!r.body) throw new Error('中转站响应为空');
+    const reader = r.body.getReader(),
+      chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const c = await reader.read();
+        if (c.done) break;
+        size += c.value.length;
+        if (size > 16384) throw new Error('中转站响应过大');
+        chunks.push(c.value);
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const info = JSON.parse(new TextDecoder().decode(bytes));
     if (info.app !== 'Relay3' || !info.running || typeof info.stationId !== 'string')
       throw new Error('目标未返回运行中的 Relay3 中转站身份');
     if (expectedStationId && info.stationId !== expectedStationId)

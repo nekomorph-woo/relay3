@@ -1,3 +1,4 @@
+import { validateSearch } from './chatSearch';
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
 import type { RelayService } from './service';
@@ -200,6 +201,14 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     const d = service.device(r);
     chat.ack(d.id, (r.body as any)?.messageId);
     return { ok: true };
+  });
+  app.get('/api/chat/search', async (r) => {
+    const d = service.device(r);
+    const result = await service.search.search(validateSearch(r.query));
+    return {
+      ...result,
+      items: result.items.map((row: any) => service.packages.chatMessage(chat.read(row), d.id)),
+    };
   });
   app.get('/api/chat/messages', async (r) => {
     const d = service.device(r);

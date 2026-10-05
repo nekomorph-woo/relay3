@@ -8,6 +8,9 @@ export interface PreparationTask {
   state: 'running' | 'completed' | 'failed';
   finishedAt?: number;
   error?: string;
+  speed?: number;
+  sampleAt?: number;
+  sampleBytes?: number;
   controller: AbortController;
 }
 const tasks = new Map<string, PreparationTask>();
@@ -36,6 +39,17 @@ export function startPreparation(stationId: string, name: string, total: number)
   return t;
 }
 export function preparationProgress(t: PreparationTask, stage: string, bytes = 0, total = t.total) {
+  const now = Date.now();
+  if (stage !== t.stage) {
+    t.speed = undefined;
+    t.sampleAt = now;
+    t.sampleBytes = bytes;
+  } else if (stage.startsWith('上传 ') && t.sampleAt && now - t.sampleAt >= 300) {
+    const speed = ((bytes - (t.sampleBytes ?? 0)) * 1000) / (now - t.sampleAt);
+    t.speed = t.speed ? t.speed * 0.7 + speed * 0.3 : speed;
+    t.sampleAt = now;
+    t.sampleBytes = bytes;
+  }
   Object.assign(t, { stage, bytes, total });
   announce();
 }

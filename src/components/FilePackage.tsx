@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  Send,
   X,
   FolderOpen,
   CircleHelp,
@@ -407,6 +408,20 @@ export function FilePackageCard({
           {p.removedCount > 0 && <small>发送前已移除 {p.removedCount} 个未成功上传的文件</small>}
           {canOperate && (
             <div className="package-actions">
+              {sender && session && p.state !== 'uploading' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent('relay3-resend', { detail: { p, session } }),
+                    )
+                  }
+                >
+                  <Send size={15} />
+                  重新发送
+                </button>
+              )}
               {sender && p.state === 'uploading' && (
                 <>
                   <button

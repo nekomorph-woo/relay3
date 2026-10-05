@@ -224,3 +224,29 @@ test('组合清理采用交集与预览快照，保留新消息、文件记录�
     await f.close();
   }
 });
+test('SQLite中文搜索只索引明文与公开备注，密文不泄漏且查询不推进阅读游标', async () => {
+  const f = await fixture();
+  try {
+    const a = await f.join('发送者'),
+      b = await f.join('其他设备');
+    await f.send(a, '局域网文件传输报告与**原文**');
+    await f.send(a, '隐藏机密内容', [a], '公开线索：报告');
+    const q = (s) => '/api/chat/search?q=' + encodeURIComponent(s);
+    let r = await f.call(q('文件传'), b.token);
+    assert.equal(r.status, 200);
+    assert.equal(r.data.items.length, 1);
+    assert.match(r.data.items[0].content, /原文/);
+    r = await f.call(q('隐藏机密'), b.token);
+    assert.equal(r.data.items.length, 0);
+    r = await f.call(q('公开线索'), b.token);
+    assert.equal(r.data.items.length, 1);
+    assert.equal(r.data.items[0].content, null);
+    assert.equal(f.service.chat.cursor(b.id), 0);
+    r = await f.call(q('报告') + '&mode=plain', b.token);
+    assert.equal(r.data.items.length, 1);
+    assert.equal(r.data.limited, true);
+    assert.equal((await f.call(q('文件传'), '')).status, 401);
+  } finally {
+    await f.close();
+  }
+});

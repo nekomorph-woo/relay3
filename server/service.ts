@@ -1,3 +1,4 @@
+import { ChatSearch } from './chatSearch';
 import { capacitySnapshot, assertCapacity } from './capacity';
 import { FileDelivery } from './files';
 import { FilePackages } from './packages';
@@ -49,6 +50,7 @@ export class RelayService {
   packages: FilePackages;
   store: Store;
   chat: ChatStore;
+  search: ChatSearch;
   closed = false;
   closing = false;
   private closePromise: Promise<void> | null = null;
@@ -125,6 +127,7 @@ export class RelayService {
   ) {
     this.store = new Store(dataDir, receiveDir);
     this.chat = new ChatStore(this.store.db);
+    this.search = new ChatSearch(this.store.dbPath, this.store.db, this.tasks);
     this.files = new FileDelivery(this);
     this.packages = new FilePackages(this);
     this.ensureCache();
@@ -195,7 +198,19 @@ export class RelayService {
           ),
         0,
       );
-    return capacitySnapshot(this.store.settings.cacheDir, committed);
+    const legacy = this.store
+      .transfers()
+      .filter((t) => !t.fileId && ['accepted', 'uploading'].includes(t.status))
+      .reduce(
+        (n, t) =>
+          n +
+          Math.max(
+            0,
+            t.size - (t.status === 'uploading' ? (this.uploadBytes.get(t.id) ?? t.uploaded) : 0),
+          ),
+        0,
+      );
+    return capacitySnapshot(this.store.settings.cacheDir, committed + legacy);
   }
   state(d: Device) {
     return {
@@ -296,6 +311,8 @@ export class RelayService {
       entries,
       totalBytes: entries.reduce((n, x) => n + x.bytes, 0),
       freeBytes: disk.bavail * disk.bsize,
+      committedBytes: this.capacity().committedBytes,
+      availableBytes: this.capacity().availableBytes,
       path: this.store.settings.cacheDir,
     };
   }
@@ -325,7 +342,10 @@ export class RelayService {
   }
   cleanup(now = Date.now()) {
     if (this.cacheMigration) return;
-    if (this.hub) void this.files.maintenance(now);
+    if (this.hub) {
+      this.packages.deadlineReminders(now);
+      void this.files.maintenance(now);
+    }
     for (const t of this.store.transfers())
       if (
         !t.fileId &&
@@ -1016,8 +1036,10 @@ export class RelayService {
         return this.update(t, { status: 'cancelled', error: '传输已取消' });
       }
       if (d.id !== t.recipientId) fail('只有接收设备可以操作', 403);
-      if (p.action === 'accept' && t.status === 'pending')
+      if (p.action === 'accept' && t.status === 'pending') {
+        assertCapacity(t.size, this.capacity().availableBytes);
         return this.update(t, { status: 'accepted' });
+      }
       if (p.action === 'reject' && t.status === 'pending')
         return this.update(t, { status: 'rejected', error: '接收设备拒绝了文件' });
       if (p.action === 'complete' && t.status === 'awaiting-confirm') {
@@ -1036,8 +1058,10 @@ export class RelayService {
         t = this.getTransfer((r.params as any).id);
       if (d.id !== t.senderId) fail('只有发送设备可以上传', 403);
       if (t.status !== 'accepted' || this.streams.has(t.id)) fail('等待接收设备确认后再上传', 409);
-      const disk = statfsSync(this.store.settings.cacheDir);
-      if (disk.bavail * disk.bsize < t.size + 64 * 1024 * 1024) fail('中转站磁盘空间不足', 507);
+      assertCapacity(
+        this.capacity().committedBytes,
+        capacitySnapshot(this.store.settings.cacheDir).availableBytes,
+      );
       const controller = new AbortController();
       this.streams.set(t.id, controller);
       this.update(t, { status: 'uploading', startedAt: Date.now(), error: null });
@@ -1051,6 +1075,7 @@ export class RelayService {
             bytes += chunk.length;
             if (bytes > t.size) return cb(new Error('上传字节数超过声明大小'));
             hash.update(chunk);
+            this.uploadBytes.set(t.id, bytes);
             this.tasks.progress(task, bytes);
             if (Date.now() - lastSave > 300) {
               lastSave = Date.now();
@@ -1093,6 +1118,7 @@ export class RelayService {
           return reply.code(409).send({ error: this.getTransfer(t.id).error ?? '上传中断' });
       } finally {
         this.streams.delete(t.id);
+        this.uploadBytes.delete(t.id);
       }
     });
     app.get('/api/transfers/:id/download', async (r, reply) => {
@@ -1133,6 +1159,7 @@ export class RelayService {
       const finish = (success: boolean) => {
         if (!this.streams.has(t.id)) return;
         this.streams.delete(t.id);
+        this.uploadBytes.delete(t.id);
         this.tasks.finish(task, success ? undefined : '下载中断');
         const current = this.getTransfer(t.id);
         if (current.status === 'cancelled') return;
@@ -1224,6 +1251,7 @@ export class RelayService {
     await this.control?.close();
     await clientTransfers;
     this.closed = true;
+    await this.search.close();
     this.store.close();
   }
 }

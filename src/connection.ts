@@ -9,7 +9,7 @@ export function connectStation(
     status: (status: ConnectionStatus) => void;
     expired: (code: number) => void;
     error: (error: unknown) => void;
-    reminder?: (packageId: string, senderName: string) => void;
+    reminder?: (packageId: string, senderName: string, reason?: string) => void;
   },
   createSocket = (url: string): WebSocket => new WebSocket(url),
 ) {
@@ -58,7 +58,7 @@ export function connectStation(
           typeof hub.senderName === 'string'
         ) {
           lastReply = Date.now();
-          callbacks.reminder?.(hub.packageId, hub.senderName);
+          callbacks.reminder?.(hub.packageId, hub.senderName, hub.reason);
           return;
         }
         if (supportsHeartbeat && hub.type === 'pong') {
