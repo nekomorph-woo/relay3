@@ -87,6 +87,9 @@ export interface Settings {
   receiveDir: string;
   port: number;
   retentionHours: number;
+  backgroundMode?: boolean;
+  preventSleepTransfers?: boolean;
+  preventSleepStation?: boolean;
 }
 export const activeStatuses: Status[] = [
   'pending',

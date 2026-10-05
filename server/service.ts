@@ -1,3 +1,4 @@
+import { capacitySnapshot, assertCapacity } from './capacity';
 import { FileDelivery } from './files';
 import { FilePackages } from './packages';
 import { TaskRegistry } from './tasks';
@@ -113,6 +114,7 @@ export class RelayService {
   controlUrl = '';
   clients = new Map<string, { socket: WebSocket; connection: number; alive: boolean }>();
   streams = new Map<string, AbortController>();
+  uploadBytes = new Map<string, number>();
   cleanTimer: NodeJS.Timeout;
   heartbeat: NodeJS.Timeout;
   lastBroadcast = 0;
@@ -171,6 +173,29 @@ export class RelayService {
   }
   getTransfer(id: string) {
     return this.store.transfer(id) ?? fail('传输不存在', 404);
+  }
+  capacity() {
+    // 预算由已持久化发送清单恢复；实际落盘不重复计入未写入容量。
+    const now = Date.now();
+    const committed = this.files
+      .all()
+      .filter(
+        (f) =>
+          !f.removedAt &&
+          f.createdAt + 86400000 > now &&
+          ['waiting', 'failed', 'uploading'].includes(f.state) &&
+          (!f.packageId || this.packages.get(f.packageId).state === 'uploading'),
+      )
+      .reduce(
+        (n, f) =>
+          n +
+          Math.max(
+            0,
+            f.size - (f.state === 'uploading' ? (this.uploadBytes.get(f.id) ?? f.uploaded) : 0),
+          ),
+        0,
+      );
+    return capacitySnapshot(this.store.settings.cacheDir, committed);
   }
   state(d: Device) {
     return {
@@ -627,6 +652,16 @@ export class RelayService {
       let warning: string | undefined;
       const b = r.body as any;
       const s = { ...this.store.settings };
+      for (const key of [
+        'backgroundMode',
+        'preventSleepTransfers',
+        'preventSleepStation',
+      ] as const) {
+        if (b[key] !== undefined) {
+          if (typeof b[key] !== 'boolean') fail('后台设置无效');
+          s[key] = b[key];
+        }
+      }
       if (b.stationName !== undefined) {
         if (
           typeof b.stationName !== 'string' ||
@@ -744,7 +779,14 @@ export class RelayService {
     registerChat(app, this, false);
     this.files.register(app);
     this.packages.register(app);
+    app.post('/api/capacity', async (r) => {
+      this.device(r);
+      const capacity = this.capacity();
+      assertCapacity((r.body as any)?.bytes, capacity.availableBytes);
+      return capacity;
+    });
     app.get('/api/info', async () => ({
+      capacityPreflight: true,
       app: 'Relay3',
       name: this.store.settings.stationName,
       stationId: this.store.settings.stationId,

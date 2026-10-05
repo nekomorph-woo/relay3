@@ -4,6 +4,7 @@ writeFileSync(
   `
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('relay3', {
+ clientActivity: (id, active) => ipcRenderer.invoke('client-activity', id, active),
  diagnoseConnection: (raw, expected) => ipcRenderer.invoke('connection-diagnose', raw, expected),
  startDiscovery: () => ipcRenderer.invoke('discovery-start'),
  discoverySnapshot: () => ipcRenderer.invoke('discovery-snapshot'),

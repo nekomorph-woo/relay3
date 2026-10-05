@@ -1,3 +1,4 @@
+import { capacitySnapshot, assertCapacity } from '../server/capacity';
 import {
   initializeDiagnostics,
   observeWindow,
@@ -18,6 +19,9 @@ import {
   net,
   session,
   clipboard,
+  Tray,
+  powerSaveBlocker,
+  powerMonitor,
 } from 'electron';
 import { generateIdentity, validIdentity } from '../src/chat/crypto';
 import { RelayService } from '../server/service';
@@ -52,7 +56,52 @@ const discovery = new StationDiscovery(undefined, (base, signal) =>
 let window: BrowserWindow | null = null;
 let quitting = false;
 let shutdownComplete = false;
+let tray: Tray | undefined;
+let powerBlocker: number | undefined;
+let runtimeTimer: NodeJS.Timeout | undefined;
+const clientActivities = new Set<string>();
+function showWindow() {
+  if (window) {
+    window.show();
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  }
+}
+function updateRuntime() {
+  if (!service || quitting) return;
+  const settings = service.store.settings;
+  if (settings.backgroundMode && !tray) {
+    const icon = nativeImage.createFromPath(appIconPath).resize({ width: 18, height: 18 });
+    tray = new Tray(icon);
+    tray.on('click', showWindow);
+  } else if (!settings.backgroundMode && tray) {
+    tray.destroy();
+    tray = undefined;
+    showWindow();
+  }
+  const active = downloads.size + service.streams.size + clientActivities.size;
+  tray?.setToolTip(`Relay3 · ${service.hub ? '中转站运行中' : '中转站已关闭'} · ${active} 项活动`);
+  tray?.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '打开 Relay3', click: showWindow },
+      { label: service.hub ? '中转站运行中' : '中转站已关闭', enabled: false },
+      { label: `活动任务 ${active}`, enabled: false },
+      { type: 'separator' },
+      { label: '退出 Relay3', click: () => app.quit() },
+    ]),
+  );
+  const shouldBlock =
+    (!!settings.preventSleepStation && !!service.hub) ||
+    (settings.preventSleepTransfers !== false && active > 0);
+  if (shouldBlock && powerBlocker === undefined)
+    powerBlocker = powerSaveBlocker.start('prevent-app-suspension');
+  if (!shouldBlock && powerBlocker !== undefined) {
+    powerSaveBlocker.stop(powerBlocker);
+    powerBlocker = undefined;
+  }
+}
 const downloads = new Map<string, AbortController>();
+const downloadReservations = new Map<string, { dir: string; remaining: number }>();
 function localUrl(raw: string) {
   const u = new URL(raw);
   const h = u.hostname;
@@ -89,6 +138,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
   observeWindow(window);
@@ -121,6 +171,12 @@ async function createWindow() {
   });
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, cb) => cb(false));
   await window.loadURL(process.env.RELAY3_DEV_URL ?? service.controlUrl);
+  window.on('close', (e) => {
+    if (!quitting && service.store.settings.backgroundMode) {
+      e.preventDefault();
+      window?.hide();
+    }
+  });
   window.on('closed', () => (window = null));
 }
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -129,6 +185,7 @@ else {
   app.on('second-instance', () => {
     if (window) {
       if (window.isMinimized()) window.restore();
+      window.show();
       window.focus();
     }
   });
@@ -174,6 +231,13 @@ else {
             throw error;
           }
         });
+      handler('client-activity', (id: string, active: boolean) => {
+        if (typeof id !== 'string' || id.length > 80 || typeof active !== 'boolean')
+          throw new Error('任务标识无效');
+        if (active) clientActivities.add(id);
+        else clientActivities.delete(id);
+        updateRuntime();
+      });
       handler('diagnostic-info', diagnosticInfo);
       handler('connection-diagnose', (raw: string, expected?: string) =>
         diagnoseConnection(raw, expected, (url, options) =>
@@ -329,6 +393,20 @@ else {
             throw new Error('传输标识无效或已在接收');
           const dir = service.store.settings.receiveDir;
           mkdirSync(dir, { recursive: true });
+          const reserved = [...downloadReservations.values()]
+            .filter((r) => r.dir === dir)
+            .reduce((n, r) => n + r.remaining, 0);
+          // 接收目录与本机中转缓存共用磁盘时，也扣除站内承诺。
+          const sameDisk =
+            (await import('node:fs')).statSync(dir).dev ===
+            (await import('node:fs')).statSync(service.store.settings.cacheDir).dev;
+          assertCapacity(
+            input.size,
+            capacitySnapshot(dir, reserved + (sameDisk ? service.capacity().committedBytes : 0))
+              .availableBytes,
+            '接收目录',
+          );
+          downloadReservations.set(downloadKey, { dir, remaining: input.size });
           let safeName =
             path
               .basename(input.name.replace(/\\/g, '/'))
@@ -357,6 +435,8 @@ else {
             const meter = new Transform({
               transform(chunk, _enc, cb) {
                 bytes += chunk.length;
+                const reservation = downloadReservations.get(downloadKey);
+                if (reservation) reservation.remaining = Math.max(0, input.size - bytes);
                 hash.update(chunk);
                 if (Date.now() - last > 200) {
                   last = Date.now();
@@ -439,11 +519,19 @@ else {
             return { path: destination, confirmed };
           } finally {
             downloads.delete(downloadKey);
+            downloadReservations.delete(downloadKey);
             rmSync(temporary, { force: true });
           }
         },
       );
       await createWindow();
+      runtimeTimer = setInterval(updateRuntime, 1000);
+      updateRuntime();
+      powerMonitor.on('resume', () => {
+        window?.webContents.send('system-resume');
+        service.broadcast();
+        updateRuntime();
+      });
       app.on('activate', () => {
         if (!window) void createWindow();
       });
@@ -460,6 +548,9 @@ else {
     e.preventDefault();
     if (quitting) return;
     quitting = true;
+    clearInterval(runtimeTimer);
+    tray?.destroy();
+    if (powerBlocker !== undefined) powerSaveBlocker.stop(powerBlocker);
     const deadline = setTimeout(() => {
       diagnostic('error', 'app.shutdown-timeout');
       app.exit(1);

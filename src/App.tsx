@@ -1,3 +1,4 @@
+import { PreparationProgress } from './components/PreparationProgress';
 import {
   diagnoseHttp,
   diagnosisText,
@@ -409,6 +410,9 @@ export default function App() {
     stationName: '',
     port: 42830,
     retentionHours: 1,
+    backgroundMode: false,
+    preventSleepTransfers: true,
+    preventSleepStation: false,
     cacheDir: '',
     receiveDir: '',
   });
@@ -537,12 +541,21 @@ export default function App() {
     return () => clearInterval(timer);
   }, [boot]);
   useEffect(() => {
-    if (admin) setForm({ ...admin.settings });
+    if (admin)
+      setForm({
+        backgroundMode: false,
+        preventSleepTransfers: true,
+        preventSleepStation: false,
+        ...admin.settings,
+      });
   }, [
     admin?.settings.deviceName,
     admin?.settings.stationName,
     admin?.settings.port,
     admin?.settings.retentionHours,
+    admin?.settings.backgroundMode,
+    admin?.settings.preventSleepTransfers,
+    admin?.settings.preventSleepStation,
     admin?.settings.cacheDir,
     admin?.settings.receiveDir,
   ]);
@@ -1177,6 +1190,7 @@ export default function App() {
               onError={(message) => inform(message, true)}
             />
           )}
+          <PreparationProgress stationId={multi.activeId} />
           {notice && (
             <div
               className={`notice ${notice.error ? 'error' : ''}`}
@@ -1613,6 +1627,9 @@ export default function App() {
                           stationName: form.stationName,
                           port: form.port,
                           retentionHours: form.retentionHours,
+                          backgroundMode: form.backgroundMode,
+                          preventSleepTransfers: form.preventSleepTransfers,
+                          preventSleepStation: form.preventSleepStation,
                         });
                         setAdmin(updated);
                         inform(updated.warning ?? '设置已保存', !!updated.warning);
@@ -1658,6 +1675,39 @@ export default function App() {
                         />
                       </label>
                     </div>
+                    {desktop && (
+                      <fieldset className="runtime-settings">
+                        <legend>后台运行</legend>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={form.backgroundMode}
+                            onChange={(e) => setForm({ ...form, backgroundMode: e.target.checked })}
+                          />
+                          关闭窗口后继续运行（托盘 / 菜单栏）
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={form.preventSleepTransfers}
+                            onChange={(e) =>
+                              setForm({ ...form, preventSleepTransfers: e.target.checked })
+                            }
+                          />
+                          传输期间防止自动休眠
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={form.preventSleepStation}
+                            onChange={(e) =>
+                              setForm({ ...form, preventSleepStation: e.target.checked })
+                            }
+                          />
+                          中转站运行期间防止自动休眠
+                        </label>
+                      </fieldset>
+                    )}
                     <Button type="submit" kind="primary" disabled={busy}>
                       保存设置
                     </Button>

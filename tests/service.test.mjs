@@ -472,7 +472,7 @@ test('中转站独立名称持久保存、旧版迁移与无凭证探测在线�
     assert.equal(info.onlineDevices, 1);
     assert.deepEqual(
       Object.keys(info).sort(),
-      ['app', 'name', 'onlineDevices', 'running', 'stationId'].sort(),
+      ['app', 'capacityPreflight', 'name', 'onlineDevices', 'running', 'stationId'].sort(),
     );
     for (const stationName of ['', '   ', 'x'.repeat(81), 123])
       assert.equal((await update({ stationName })).status, 400);

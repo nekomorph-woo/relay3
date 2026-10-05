@@ -39,6 +39,9 @@ export interface AdminState {
     receiveDir: string;
     port: number;
     retentionHours: number;
+    backgroundMode?: boolean;
+    preventSleepTransfers?: boolean;
+    preventSleepStation?: boolean;
   };
   dataDir: string;
   databasePath: string;
@@ -75,6 +78,7 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      clientActivity(id: string, active: boolean): Promise<void>;
       diagnoseConnection(
         raw: string,
         expected?: string,

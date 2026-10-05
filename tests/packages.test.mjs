@@ -516,3 +516,25 @@ test('正在首次或重复下载时取消文件包，下载结束回调不能�
     await f.close();
   }
 });
+test('整次发送预留尚未写入容量，取消释放预算，重启从清单恢复', async () => {
+  const f = await fixture();
+  try {
+    const before = f.s.capacity().committedBytes,
+      body = f.manifest(['a', 'bc']);
+    assert.equal((await f.call('/api/packages', f.a.token, body)).status, 200);
+    assert.equal(f.s.capacity().committedBytes, before + 3);
+    await f.upload(body, 0, 'a');
+    assert.equal(f.s.capacity().committedBytes, before + 2);
+    await f.call(`/api/packages/${body.id}/cancel`, f.a.token, {});
+    assert.equal(f.s.capacity().committedBytes, before);
+    const huge = f.manifest();
+    huge.files[0].size = f.s.capacity().availableBytes + 1;
+    assert.equal((await f.call('/api/packages', f.a.token, huge)).status, 507);
+    assert.equal(
+      f.s.files.all().some((x) => x.id === huge.files[0].id),
+      false,
+    );
+  } finally {
+    await f.close();
+  }
+});

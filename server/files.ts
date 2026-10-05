@@ -1,3 +1,4 @@
+import { assertCapacity, capacitySnapshot } from './capacity';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { RelayService } from './service';
 import type { Device, Transfer } from './store';
@@ -258,6 +259,7 @@ export class FileDelivery {
       ).length >= 100
     )
       fail('待上传文件过多', 409);
+    if (!packageId) assertCapacity(b.size, this.service.capacity().availableBytes);
     let name = b.name;
     const e = b.envelope as Envelope | undefined;
     if (b.chat) {
@@ -392,12 +394,12 @@ export class FileDelivery {
     if (f.senderId !== d.id) fail('只有发送设备可以上传', 403);
     if (f.createdAt + 86400000 <= Date.now()) fail('上传任务已过期', 409);
     if (!['waiting', 'failed'].includes(f.state) || this.busy(f.id)) fail('文件不能重复上传', 409);
-    if (
-      statfsSync(this.service.store.settings.cacheDir).bavail *
-        statfsSync(this.service.store.settings.cacheDir).bsize <
-      f.size + 64 * 1024 * 1024
-    )
-      fail('中转站磁盘空间不足', 507);
+    const capacity = this.service.capacity();
+    // 本文件已经在整次发送中预留，复查时仅比较所有剩余承诺与当前可用磁盘。
+    assertCapacity(
+      capacity.committedBytes,
+      capacitySnapshot(this.service.store.settings.cacheDir).availableBytes,
+    );
     const controller = new AbortController();
     this.service.streams.set(f.id, controller);
     const task = this.service.tasks.start('upload', f.name, f.size, d.name, f.id);
@@ -414,6 +416,7 @@ export class FileDelivery {
           bytes += chunk.length;
           if (bytes > f.size) return cb(new Error('上传大小超过声明大小'));
           hash.update(chunk);
+          this.service.uploadBytes.set(f.id, bytes);
           this.service.tasks.progress(task, bytes);
           if (Date.now() - last > 300) {
             last = Date.now();
@@ -460,6 +463,7 @@ export class FileDelivery {
       this.service.tasks.finish(task);
       return { ok: true };
     } catch (e: any) {
+      await rm(this.filename(f, true), { force: true });
       this.save({
         ...this.get(f.id),
         state: 'failed',
@@ -476,6 +480,7 @@ export class FileDelivery {
       return reply.code(409).send({ error: '上传未完成，请重新选择原文件重试' });
     } finally {
       this.service.streams.delete(f.id);
+      this.service.uploadBytes.delete(f.id);
     }
   }
   action(r: FastifyRequest, t: Transfer) {

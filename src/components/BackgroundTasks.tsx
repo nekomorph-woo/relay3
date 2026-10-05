@@ -1,3 +1,4 @@
+import { PreparationProgress } from './PreparationProgress';
 import { TransferName } from './FileTask';
 import type { Session } from '../api';
 import { useEffect, useRef, useState } from 'react';
@@ -78,6 +79,7 @@ export function BackgroundTasks({
             </button>
           </header>
           <div className="background-task-list">
+            <PreparationProgress />
             {tasks.length ? (
               tasks.map((t) => {
                 const Icon = icons[t.kind];

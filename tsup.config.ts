@@ -9,6 +9,7 @@ export default defineConfig({
     discovery: 'electron/discovery.ts',
     connection: 'src/connection.ts',
     connectionDiagnosis: 'src/connectionDiagnosis.ts',
+    capacity: 'server/capacity.ts',
   },
   format: ['esm'],
   outDir: 'dist-electron',

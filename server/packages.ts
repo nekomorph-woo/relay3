@@ -1,3 +1,4 @@
+import { assertCapacity } from './capacity';
 import type { FastifyInstance } from 'fastify';
 import type { RelayService } from './service';
 import type { Device, Transfer } from './store';
@@ -157,6 +158,10 @@ export class FilePackages {
       fail('文件标识重复或缺少内容校验');
     if (!Number.isSafeInteger(b.files.reduce((sum: number, f: any) => sum + f.size, 0)))
       fail('文件总大小无效');
+    assertCapacity(
+      b.files.reduce((n: number, f: any) => n + f.size, 0),
+      this.service.capacity().availableBytes,
+    );
     const p: FilePackage = {
       id: b.id,
       stationId: this.service.store.settings.stationId,
