@@ -832,7 +832,7 @@ export default function App() {
               <Info size={17} />
             </button>
             <button
-              title="项目 GitHub"
+              title="跳转Relay3 Github"
               aria-label="项目 GitHub"
               onClick={() =>
                 desktop
