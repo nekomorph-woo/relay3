@@ -264,7 +264,7 @@ test('群聊文件名加密、手机大厅接收、Emoji本地加载和输入留
   await desktop.getByRole('button', { name: '关闭表情' }).click();
   await desktop.getByRole('button', { name: '发送密文', exact: true }).click();
   const textarea = desktop.getByRole('dialog', { name: '发送密文' }).getByLabel('文字消息');
-  await expect(textarea).toHaveCSS('padding-left', '12px');
+  await expect(textarea).toHaveCSS('padding-left', '16px');
   await desktop.screenshot({ path: 'test-results/delivery-input.png' });
   await desktop.getByRole('button', { name: '关闭密文输入' }).click();
   expect(errors).toEqual([]);

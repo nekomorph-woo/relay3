@@ -102,7 +102,7 @@ input,
 select {
   height: 44px;
   background: var(--color-surface);
-  padding: 0 var(--space-md);
+  padding: 0 var(--control-padding-inline);
   width: 100%;
   min-width: 0;
 }
@@ -128,7 +128,7 @@ select {
       appearance: base-select;
     }
     select {
-      padding-right: 16px;
+      padding-right: var(--control-padding-inline);
       background-image: none;
       align-items: center;
       justify-content: space-between;
@@ -787,12 +787,12 @@ dd {
   margin-left: auto;
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-sm);
-  padding: 0 var(--space-md);
+  padding: 0 var(--control-padding-inline);
   background: var(--color-surface);
   min-width: 0;
   max-width: 290px;
 }
-.search input {
+.search input:not([type='checkbox']):not([type='radio']):not([type='file']) {
   border: 0;
   margin: 0;
   padding: 0;
@@ -1482,7 +1482,7 @@ dialog textarea {
   width: 100%;
   min-height: 100px;
   margin: 16px 0;
-  padding: 12px;
+  padding: 12px var(--control-padding-inline);
   resize: vertical;
   overflow-wrap: anywhere;
 }
@@ -2169,7 +2169,7 @@ main.chat-workspace {
 .encrypted-compose-modal .chat-composer textarea {
   border: var(--rule-width) solid var(--color-rule);
   border-radius: var(--radius-sm);
-  padding: var(--space-md);
+  padding: var(--space-md) var(--control-padding-inline);
   background: var(--color-paper);
   min-height: 100px;
   resize: vertical;
@@ -4061,7 +4061,7 @@ main.native-page {
 }
 .receive-buffer input {
   width: 110px;
-  padding: 8px 12px;
+  padding: 8px var(--control-padding-inline);
 }
 .buffer-presets {
   flex-wrap: wrap;
@@ -4270,10 +4270,10 @@ main.native-page {
 /* 内侧留白与聚焦边框共同计入布局，避免贴边和裁切。 */
 input:not([type='checkbox']):not([type='radio']):not([type='file']),
 textarea {
-  padding: 10px 12px;
+  padding: 10px var(--control-padding-inline);
 }
 .chat-composer textarea {
-  padding: 10px 12px;
+  padding: 10px var(--control-padding-inline);
 }
 .chat-compose-body {
   padding: 4px 12px 8px 4px;
@@ -4368,11 +4368,11 @@ textarea {
   margin-top: 0;
   min-width: 0;
   width: 100%;
-  padding: 6px 10px;
+  padding: 6px var(--control-padding-inline);
 }
 .recipient-tools select {
   width: 110px;
-  padding: 6px 28px 6px 10px;
+  padding: 6px 40px 6px var(--control-padding-inline);
 }
 .recipient-page {
   min-height: 54px;
@@ -4842,4 +4842,12 @@ textarea {
 .package-file-controls .retry-file:focus-within {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+@supports (appearance: base-select) {
+  @media (pointer: fine) {
+    .recipient-tools select {
+      padding-right: var(--control-padding-inline);
+    }
+  }
 }
