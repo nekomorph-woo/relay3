@@ -4032,11 +4032,17 @@ main.native-page {
   flex-wrap: wrap;
 }
 .buffer-presets button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   padding: 4px 10px;
   font-size: var(--text-sm);
 }
 .buffer-presets button[aria-pressed='true'] {
   border-color: var(--color-focus);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 .file-task {
   display: grid;
@@ -4448,4 +4454,29 @@ textarea {
 }
 .file-summary-heading strong {
   min-width: 0;
+}
+
+.pairing-address-choice select,
+.pairing-panel .pairing-address-text {
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+.pairing-panel .pairing-address-text {
+  width: 100%;
+  margin: 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.receive-buffer .buffer-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  gap: 4px;
+}
+.buffer-presets button {
+  padding: 4px 2px;
+  font-size: var(--text-xs);
+  gap: 3px;
+  white-space: nowrap;
 }

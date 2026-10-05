@@ -1354,8 +1354,8 @@ export default function App() {
                     <>
                       <h3>手机扫码连接</h3>
                       {qr && <img className="qr" src={qr} alt="中转站配对二维码" />}
-                      <label>
-                        局域网地址
+                      <label className="pairing-address-choice">
+                        中转站
                         <select
                           aria-label="选择局域网地址"
                           value={address}
@@ -1365,12 +1365,17 @@ export default function App() {
                             ? admin.addresses
                             : [`http://127.0.0.1:${admin.settings.port}`]
                           ).map((a) => (
-                            <option key={a} value={a}>
-                              {admin.settings.stationName} · {a}
+                            <option
+                              key={a}
+                              value={a}
+                              aria-label={`${admin.settings.stationName}，${a}`}
+                            >
+                              {admin.settings.stationName}
                             </option>
                           ))}
                         </select>
                       </label>
+                      <p className="pairing-address-text">地址：{address}</p>
                       <div className="numeric-pairing">
                         <div>
                           <strong>一次性配对码</strong>

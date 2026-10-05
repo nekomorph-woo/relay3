@@ -68,6 +68,16 @@ test.beforeAll(async () => {
   await desktop.getByRole('button', { name: '开启中转站', exact: true }).click();
   await desktop.getByRole('button', { name: '本机加入', exact: true }).click();
   await expect(desktop.locator('main')).toHaveAttribute('data-connected', 'true');
+  const addressChoice = desktop.getByLabel('选择局域网地址');
+  const stationAddress = desktop.locator('.pairing-address-text');
+  await expect(stationAddress).toContainText('地址：' + (await addressChoice.inputValue()));
+  expect(await addressChoice.evaluate((el) => getComputedStyle(el).fontSize)).toBe(
+    await stationAddress.evaluate((el) => getComputedStyle(el).fontSize),
+  );
+  await expect(addressChoice.locator('option').first()).toHaveText(
+    '这是一个很长的中转站名字用于检查切换控件布局',
+  );
+  await desktop.screenshot({ path: 'test-results/delivery-station-address.png' });
   base = `http://127.0.0.1:${port}`;
   browser = await chromium.launch({ args: ['--no-proxy-server'] });
   const context = await browser.newContext({
@@ -104,6 +114,20 @@ test('普通多目标离线发送、上传完成后独立接收、服务端任�
     const d = devices.find((d: any) => d.name === name);
     await desktop.locator(`.delivery-recipients [data-device-id="${d.id}"] input`).check();
   }
+  await expect(desktop.locator('.buffer-presets button[aria-pressed="true"]')).toHaveText('24小时');
+  await desktop
+    .locator('.buffer-presets')
+    .getByRole('button', { name: '1小时', exact: true })
+    .click();
+  await expect(desktop.getByLabel('接收缓冲分钟数')).toHaveValue('60');
+  const selected = desktop.locator('.buffer-presets button[aria-pressed="true"]');
+  await expect(selected).toHaveText('1小时');
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+    await desktop
+      .locator('.buffer-presets button[aria-pressed="false"]')
+      .first()
+      .evaluate((el) => getComputedStyle(el).backgroundColor),
+  );
   await desktop.getByLabel('接收缓冲分钟数').fill('10');
   await desktop.getByLabel('选择待发送文件').setInputFiles({
     name: '多目标.txt',

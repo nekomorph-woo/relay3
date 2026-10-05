@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, CircleHelp } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, CircleHelp, Check } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { DeviceAvatar } from './DeviceAvatar';
 import { DeviceTag } from './DeviceTag';
@@ -208,6 +208,7 @@ export function ReceiveBuffer({
         <div className="buffer-presets">
           {[10, 60, 360, 1440].map((n) => (
             <button type="button" key={n} aria-pressed={value === n} onClick={() => onChange(n)}>
+              {value === n && <Check size={13} />}
               {n < 60 ? `${n}分钟` : `${n / 60}小时`}
             </button>
           ))}
