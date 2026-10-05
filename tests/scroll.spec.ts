@@ -471,6 +471,18 @@ test('两个中转站的传输列表各自恢复位置，连接弹窗固定提�
   await remote.startHub();
   try {
     await page.locator('main').getByRole('button', { name: '连接其他中转站', exact: true }).click();
+    const connectDialog = page.getByRole('dialog', { name: '连接中转站' });
+    await page.getByLabel('中转站地址或配对链接').fill('http://192.168.5.8:42830');
+    await page.getByLabel('配对码', { exact: true }).fill('123456');
+    await connectDialog.press('Escape');
+    await expect(connectDialog).toBeVisible();
+    await page.mouse.click(2, 2);
+    await expect(connectDialog).toBeVisible();
+    await expect(page.getByLabel('配对码', { exact: true })).toHaveValue('123456');
+    await expect(page.getByLabel('中转站地址或配对链接')).toHaveValue('http://192.168.5.8:42830');
+    await connectDialog.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(connectDialog).toHaveCount(0);
+    await page.locator('main').getByRole('button', { name: '连接其他中转站', exact: true }).click();
     await fixedWhileScrolling('.dialog-body', '.dialog-footer');
     await page
       .getByLabel('中转站地址或配对链接')

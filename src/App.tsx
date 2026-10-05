@@ -154,11 +154,13 @@ function Modal({
   children,
   actions,
   onClose,
+  dismissible = true,
 }: {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
   onClose: () => void;
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -176,11 +178,12 @@ function Modal({
       className="app-dialog"
       aria-label={title}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        if (dismissible && e.target === ref.current) onClose();
       }}
     >
       <div className="dialog-head">
@@ -2228,6 +2231,7 @@ export default function App() {
       {modal === 'connect' && (
         <Modal
           title="连接中转站"
+          dismissible={false}
           onClose={() => setModal(null)}
           actions={
             <Button type="submit" form="connect-station-form" kind="primary" disabled={busy}>
