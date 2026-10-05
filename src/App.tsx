@@ -792,6 +792,9 @@ export default function App() {
         <nav aria-label="主导航">
           {nav.map(({ id, label, icon: Icon }) => (
             <div key={id} className="nav-entry">
+              {desktop && id === 'transfer' && (
+                <span className="nav-group-label">中转站客户端</span>
+              )}
               {desktop && id === 'station' && (
                 <span className="nav-group-label">本机中转站管理</span>
               )}
