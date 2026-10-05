@@ -1,5 +1,6 @@
 import { browserPlatformInfo, normalizePlatform } from '../devicePlatform';
 import { Monitor, Smartphone, Apple, Airplay, HelpCircle } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 export function deviceKind(platform?: string | null) {
   const kind = normalizePlatform(platform);
   if (kind === 'iOS') return { label: 'iOS手机', Icon: Apple };
@@ -11,9 +12,9 @@ export function deviceKind(platform?: string | null) {
 export function DeviceTag({ platform }: { platform?: string | null }) {
   const { label, Icon } = deviceKind(platform);
   return (
-    <span className="device-platform-tag" title={label} aria-label={label} role="img">
+    <Tooltip className="device-platform-tag" text={label} aria-label={label} role="img">
       <Icon size={13} aria-hidden="true" />
-    </span>
+    </Tooltip>
   );
 }
 

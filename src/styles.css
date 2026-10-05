@@ -3277,6 +3277,24 @@ main.native-page {
 .github-tooltip-trigger:focus-visible .github-tooltip {
   visibility: visible;
 }
+.app-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  z-index: 1000;
+  max-width: calc(100vw - 16px);
+  padding: 7px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 4px 12px var(--color-overlay);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
 .station-name {
   display: block;
   margin: var(--space-sm) 0;
