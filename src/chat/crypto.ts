@@ -30,6 +30,7 @@ function aad(context: ChatContext, clientId: string) {
       context.remark,
       context.remarkStyle,
       ...(context.purpose ? [context.purpose, context.fileId] : []),
+      ...(context.packageId ? [context.packageId] : []),
     ]),
   );
 }

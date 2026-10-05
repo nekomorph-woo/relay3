@@ -24,6 +24,8 @@ export class ChatStore {
       db.exec("ALTER TABLE chat_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
     if (!columns.some((c) => c.name === 'fileId'))
       db.exec('ALTER TABLE chat_messages ADD COLUMN fileId TEXT');
+    if (!columns.some((c) => c.name === 'packageId'))
+      db.exec('ALTER TABLE chat_messages ADD COLUMN packageId TEXT');
     if (!columns.some((c) => c.name === 'senderPlatform'))
       db.exec('ALTER TABLE chat_messages ADD COLUMN senderPlatform TEXT');
     db.exec(
@@ -200,7 +202,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     return { ok: true };
   });
   app.get('/api/chat/messages', async (r) => {
-    service.device(r);
+    const d = service.device(r);
     const q = r.query as any,
       terms: string[] = [],
       args: (string | number)[] = [];
@@ -231,7 +233,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     const rows = chat.db
       .prepare(`SELECT * FROM chat_messages WHERE ${where} ORDER BY id ${order} LIMIT ? OFFSET ?`)
       .all(...args, limit, page * limit)
-      .map((row) => chat.read(row));
+      .map((row) => service.packages.chatMessage(chat.read(row), d.id));
     return { items: order === 'DESC' ? rows.reverse() : rows, total, latestId: chat.latest() };
   });
   app.post('/api/chat/messages', async (r) => {

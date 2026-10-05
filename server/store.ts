@@ -13,6 +13,7 @@ export interface SavedConnection {
   autoConnect?: boolean;
 }
 export interface ReceivedFile {
+  packageId?: string;
   id: string;
   name: string;
   path: string;
@@ -46,6 +47,7 @@ export interface Device {
   ip: string;
 }
 export interface Transfer {
+  packageId?: string;
   fileId?: string;
   chatMessageId?: number;
   receiveDeadline?: number | null;

@@ -4,6 +4,7 @@ export type { Device, Transfer };
 export type Session = SavedConnection;
 export interface HubState {
   connectionHeartbeat?: boolean;
+  filePackages?: boolean;
   chatLatestId?: number;
   chatUnread?: number;
   stationId: string;

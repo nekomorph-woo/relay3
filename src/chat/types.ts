@@ -16,7 +16,8 @@ export interface Envelope {
   recipients: { id: string; publicKey: string; nonce: string; key: string }[];
 }
 export interface ChatMessage {
-  kind?: 'text' | 'file';
+  kind?: 'text' | 'file' | 'package';
+  packageId?: string | null;
   fileId?: string | null;
   id: number;
   clientId: string;
@@ -39,7 +40,8 @@ export interface ChatDevice {
   publicKey: string | null;
 }
 export interface ChatContext {
-  purpose?: 'file-name';
+  purpose?: 'file-name' | 'file-package';
+  packageId?: string;
   fileId?: string;
   stationId: string;
   senderId: string;

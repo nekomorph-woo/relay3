@@ -1,4 +1,5 @@
 import { FileDelivery } from './files';
+import { FilePackages } from './packages';
 import { TaskRegistry } from './tasks';
 import { diagnostic } from './diagnostics';
 import { detectPlatform, normalizePlatform } from '../src/devicePlatform';
@@ -44,6 +45,7 @@ function bearer(r: FastifyRequest) {
 export class RelayService {
   tasks = new TaskRegistry();
   files: FileDelivery;
+  packages: FilePackages;
   store: Store;
   chat: ChatStore;
   closed = false;
@@ -122,6 +124,7 @@ export class RelayService {
     this.store = new Store(dataDir, receiveDir);
     this.chat = new ChatStore(this.store.db);
     this.files = new FileDelivery(this);
+    this.packages = new FilePackages(this);
     this.ensureCache();
     this.cleanTimer = setInterval(() => this.cleanup(), 30_000);
     this.cleanTimer.unref();
@@ -172,6 +175,7 @@ export class RelayService {
   state(d: Device) {
     return {
       connectionHeartbeat: true,
+      filePackages: true,
       stationId: this.store.settings.stationId,
       stationName: this.store.settings.stationName,
       chatLatestId: this.chat.latest(),
@@ -180,7 +184,11 @@ export class RelayService {
       devices: this.store.devices().map((x) => ({ ...x, online: this.clients.has(x.id) })),
       transfers: this.store
         .transfers()
-        .filter((t) => t.senderId === d.id || t.recipientId === d.id)
+        .filter(
+          (t) =>
+            (t.senderId === d.id || t.recipientId === d.id) &&
+            this.packages.transferVisible(t, d.id),
+        )
         .filter((t, i) => i < 200 || activeStatuses.includes(t.status)),
     };
   }
@@ -248,6 +256,7 @@ export class RelayService {
           id,
           folder,
           chatMessageId: f?.chatMessageId,
+          packageId: f?.packageId,
           path: filename,
           bytes: stat.size,
           name: f?.name ?? t?.name ?? `未关联文件 ${id}`,
@@ -372,6 +381,7 @@ export class RelayService {
       if (r.url.startsWith('/admin/') && bearer(r) !== this.adminToken) fail('管理权限不足', 401);
     });
     registerChat(app, this, true);
+    this.packages.register(app, true);
     app.get('/admin/tasks', async () => ({ tasks: this.tasks.list() }));
     app.get('/admin/status', async () => this.status());
     app.post('/admin/client/session', async (r) => {
@@ -731,6 +741,7 @@ export class RelayService {
     );
     registerChat(app, this, false);
     this.files.register(app);
+    this.packages.register(app);
     app.get('/api/info', async () => ({
       app: 'Relay3',
       name: this.store.settings.stationName,
@@ -872,7 +883,11 @@ export class RelayService {
       const q = r.query as any;
       const all = this.store
         .transfers()
-        .filter((t) => t.senderId === d.id || t.recipientId === d.id)
+        .filter(
+          (t) =>
+            (t.senderId === d.id || t.recipientId === d.id) &&
+            this.packages.transferVisible(t, d.id),
+        )
         .filter(
           (t) =>
             !q.search ||

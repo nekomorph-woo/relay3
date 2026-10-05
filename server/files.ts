@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { RelayService } from './service';
-import type { Transfer } from './store';
+import type { Device, Transfer } from './store';
 import type { Envelope } from '../src/chat/types';
 import { randomUUID, createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, renameSync, statfsSync } from 'node:fs';
@@ -11,11 +11,13 @@ import path from 'node:path';
 import { diagnostic } from './diagnostics';
 export interface SharedFile {
   id: string;
+  packageId?: string;
+  removedAt?: number;
   senderId: string;
   senderName: string;
   name: string;
   size: number;
-  state: 'waiting' | 'uploading' | 'ready' | 'failed' | 'cleaned';
+  state: 'waiting' | 'uploading' | 'staged' | 'ready' | 'failed' | 'cleaned';
   createdAt: number;
   uploadedAt: number | null;
   uploaded: number;
@@ -135,6 +137,7 @@ export class FileDelivery {
     return this.cleaning;
   }
   private async runMaintenance(now: number) {
+    await this.service.packages.maintenance(now);
     const files = this.all();
     const scan = this.service.tasks.start('scan', '检查中转缓存', files.length);
     let cleanup: string | undefined;
@@ -147,7 +150,8 @@ export class FileDelivery {
           f.state !== 'cleaned' &&
           ((f.expiresAt !== null && f.expiresAt <= now) ||
             (f.state === 'ready' && !existsSync(this.filename(f))) ||
-            ((f.state === 'waiting' || f.state === 'failed') && f.createdAt + 86400000 <= now))
+            ((f.state === 'waiting' || f.state === 'failed' || f.state === 'staged') &&
+              f.createdAt + 86400000 <= now))
         ) {
           cleanup ??= this.service.tasks.start('cleanup', '清理过期缓存', files.length);
           try {
@@ -181,189 +185,203 @@ export class FileDelivery {
         !this.transfers(f.id).some((t) => t.recipientId === d.id)
       )
         fail('无权查看此文件', 403);
+      if (
+        f.packageId &&
+        (!this.service.packages.authorized(this.service.packages.get(f.packageId), d.id) ||
+          (!this.service.packages.get(f.packageId).readyAt && d.id !== f.senderId))
+      )
+        fail('无权查看此文件', 403);
       this.expire(f);
       return {
         ...f,
+        envelope:
+          f.packageId && f.envelope && d.id !== f.senderId
+            ? { ...f.envelope, recipients: f.envelope.recipients.filter((r) => r.id === d.id) }
+            : f.envelope,
         transfers: this.transfers(f.id).filter(
           (t) => t.senderId === d.id || t.recipientId === d.id,
         ),
       };
     });
-    app.post('/api/files', async (r) => {
-      const d = this.service.device(r),
-        b = r.body as any;
-      if (!this.service.clients.has(d.id)) fail('请先连接中转站', 409);
-      if (
-        !b ||
-        !/^[a-zA-Z0-9-]{16,80}$/.test(b.id ?? '') ||
-        !Number.isSafeInteger(b.size) ||
-        b.size < 0 ||
-        !Number.isInteger(b.bufferMinutes) ||
-        b.bufferMinutes < 10 ||
-        b.bufferMinutes > 1440
-      )
-        fail('文件大小、标识或接收缓冲时间无效');
-      if (
-        !Array.isArray(b.recipientIds) ||
-        !b.recipientIds.length ||
-        b.recipientIds.length > 256 ||
-        new Set(b.recipientIds).size !== b.recipientIds.length
-      )
-        fail('请选择接收设备');
-      const recipients = b.recipientIds.map(
-        (id: string) => this.service.store.device(id) ?? fail('接收设备已被清除'),
-      );
-      if (recipients.some((x: any) => x.id === d.id)) fail('不能发送给自己');
-      if (
-        typeof b.remark !== 'string' ||
-        [...b.remark].length > 1000 ||
-        !['hint', 'note', 'clue'].includes(b.remarkStyle)
-      )
-        fail('公开备注无效');
-      if (
-        b.expectedSha256 !== undefined &&
-        (typeof b.expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(b.expectedSha256))
-      )
-        fail('文件校验摘要无效');
-      const existing = this.all().find((f) => f.id === b.id);
-      if (existing) {
-        if (existing.senderId !== d.id) fail('文件标识已占用', 409);
-        return { ...existing, transfers: this.transfers(existing.id) };
-      }
-      if (
-        this.all().filter(
-          (f) => f.senderId === d.id && (f.state === 'waiting' || f.state === 'uploading'),
-        ).length >= 100
-      )
-        fail('待上传文件过多', 409);
-      let name = b.name;
-      const e = b.envelope as Envelope | undefined;
-      if (b.chat) {
-        if (
-          b.name !== undefined ||
-          !e ||
-          e.version !== 1 ||
-          e.clientId !== b.id ||
-          !b64(e.ephemeral, 32) ||
-          !b64(e.salt, 32) ||
-          !b64(e.nonce, 12) ||
-          typeof e.body !== 'string' ||
-          !b64(e.body, Buffer.from(e.body, 'base64').length) ||
-          Buffer.from(e.body, 'base64').length < 17 ||
-          Buffer.from(e.body, 'base64').length > 4016 ||
-          !Array.isArray(e.recipients) ||
-          e.recipients.length !== recipients.length + 1
-        )
-          fail('文件名密文格式无效');
-        const ids = new Set<string>();
-        for (const recipient of e!.recipients) {
-          if (
-            !recipient ||
-            ids.has(recipient.id) ||
-            ![d.id, ...b.recipientIds].includes(recipient.id) ||
-            this.service.chat.key(recipient.id) !== recipient.publicKey ||
-            !b64(recipient.publicKey, 32) ||
-            !b64(recipient.nonce, 12) ||
-            !b64(recipient.key, 48)
-          )
-            fail('接收设备公钥已变化，请刷新列表');
-          ids.add(recipient.id);
-        }
-        name = '未知文件';
-      } else if (
-        typeof name !== 'string' ||
-        !name.trim() ||
-        name.length > 240 ||
-        /[\x00-\x1f]/.test(name)
-      )
-        fail('文件名无效');
-      const f: SharedFile = {
-        id: b.id,
-        expectedSha256: b.expectedSha256,
-        senderId: d.id,
-        senderName: d.name,
-        name,
-        size: b.size,
-        state: 'waiting',
-        createdAt: Date.now(),
-        uploadedAt: null,
-        uploaded: 0,
-        sha256: null,
-        bufferMinutes: b.bufferMinutes,
-        receiveDeadline: null,
-        expiresAt: null,
-        cleanedAt: null,
-        remark: b.remark,
-        remarkStyle: b.remarkStyle,
-        ...(b.chat ? { envelope: e } : {}),
-      };
-      const db = this.service.store.db;
-      db.exec('BEGIN');
-      try {
-        if (b.chat) {
-          const result = db
-            .prepare(
-              'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,fileId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-            )
-            .run(
-              f.id,
-              d.id,
-              d.name,
-              f.createdAt,
-              'encrypted',
-              null,
-              JSON.stringify(e),
-              f.remark,
-              f.remarkStyle,
-              d.platform,
-              'file',
-              f.id,
-            );
-          f.chatMessageId = Number(result.lastInsertRowid);
-        }
-        this.save(f);
-        for (const recipient of recipients)
-          this.service.store.saveTransfer({
-            id: randomUUID(),
-            fileId: f.id,
-            chatMessageId: f.chatMessageId,
-            stationId: this.service.store.settings.stationId,
-            stationName: this.service.store.settings.stationName,
-            name: f.name,
-            size: f.size,
-            senderId: d.id,
-            senderName: d.name,
-            senderPlatform: d.platform,
-            recipientId: recipient.id,
-            recipientName: recipient.name,
-            recipientPlatform: recipient.platform,
-            status: 'accepted',
-            createdAt: f.createdAt,
-            startedAt: null,
-            completedAt: null,
-            duration: null,
-            uploaded: 0,
-            downloaded: 0,
-            sha256: null,
-            expiresAt: null,
-            cleanedAt: null,
-            error: null,
-            receiveDeadline: null,
-            lastDownloadedAt: null,
-          });
-        db.exec('COMMIT');
-      } catch (e) {
-        db.exec('ROLLBACK');
-        throw e;
-      }
-      this.service.broadcast();
-      return { ...f, transfers: this.transfers(f.id) };
-    });
+    app.post('/api/files', async (r) => this.create(this.service.device(r), r.body));
     app.put('/api/files/:id/upload', async (r, reply) => this.upload(r, reply));
+  }
+  create(d: Device, b: any, packageId?: string) {
+    if (!this.service.clients.has(d.id)) fail('请先连接中转站', 409);
+    if (
+      !b ||
+      !/^[a-zA-Z0-9-]{16,80}$/.test(b.id ?? '') ||
+      !Number.isSafeInteger(b.size) ||
+      b.size < 0 ||
+      !Number.isInteger(b.bufferMinutes) ||
+      b.bufferMinutes < 10 ||
+      b.bufferMinutes > 1440
+    )
+      fail('文件大小、标识或接收缓冲时间无效');
+    if (
+      !Array.isArray(b.recipientIds) ||
+      !b.recipientIds.length ||
+      b.recipientIds.length > 256 ||
+      new Set(b.recipientIds).size !== b.recipientIds.length
+    )
+      fail('请选择接收设备');
+    const recipients = b.recipientIds.map(
+      (id: string) => this.service.store.device(id) ?? fail('接收设备已被清除'),
+    );
+    if (recipients.some((x: any) => x.id === d.id)) fail('不能发送给自己');
+    if (
+      typeof b.remark !== 'string' ||
+      [...b.remark].length > 1000 ||
+      !['hint', 'note', 'clue'].includes(b.remarkStyle)
+    )
+      fail('公开备注无效');
+    if (
+      b.expectedSha256 !== undefined &&
+      (typeof b.expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(b.expectedSha256))
+    )
+      fail('文件校验摘要无效');
+    const existing = this.all().find((f) => f.id === b.id);
+    if (existing) {
+      if (existing.senderId !== d.id) fail('文件标识已占用', 409);
+      return { ...existing, transfers: this.transfers(existing.id) };
+    }
+    if (
+      this.all().filter(
+        (f) => f.senderId === d.id && (f.state === 'waiting' || f.state === 'uploading'),
+      ).length >= 100
+    )
+      fail('待上传文件过多', 409);
+    let name = b.name;
+    const e = b.envelope as Envelope | undefined;
+    if (b.chat) {
+      if (
+        b.name !== undefined ||
+        !e ||
+        e.version !== 1 ||
+        e.clientId !== b.id ||
+        !b64(e.ephemeral, 32) ||
+        !b64(e.salt, 32) ||
+        !b64(e.nonce, 12) ||
+        typeof e.body !== 'string' ||
+        !b64(e.body, Buffer.from(e.body, 'base64').length) ||
+        Buffer.from(e.body, 'base64').length < 17 ||
+        Buffer.from(e.body, 'base64').length > 4016 ||
+        !Array.isArray(e.recipients) ||
+        e.recipients.length !== recipients.length + 1
+      )
+        fail('文件名密文格式无效');
+      const ids = new Set<string>();
+      for (const recipient of e!.recipients) {
+        if (
+          !recipient ||
+          ids.has(recipient.id) ||
+          ![d.id, ...b.recipientIds].includes(recipient.id) ||
+          this.service.chat.key(recipient.id) !== recipient.publicKey ||
+          !b64(recipient.publicKey, 32) ||
+          !b64(recipient.nonce, 12) ||
+          !b64(recipient.key, 48)
+        )
+          fail('接收设备公钥已变化，请刷新列表');
+        ids.add(recipient.id);
+      }
+      name = '未知文件';
+    } else if (
+      typeof name !== 'string' ||
+      !name.trim() ||
+      name.length > 240 ||
+      /[\x00-\x1f]/.test(name)
+    )
+      fail('文件名无效');
+    const f: SharedFile = {
+      id: b.id,
+      packageId,
+      expectedSha256: b.expectedSha256,
+      senderId: d.id,
+      senderName: d.name,
+      name,
+      size: b.size,
+      state: 'waiting',
+      createdAt: Date.now(),
+      uploadedAt: null,
+      uploaded: 0,
+      sha256: null,
+      bufferMinutes: b.bufferMinutes,
+      receiveDeadline: null,
+      expiresAt: null,
+      cleanedAt: null,
+      remark: b.remark,
+      remarkStyle: b.remarkStyle,
+      ...(b.chat ? { envelope: e } : {}),
+    };
+    const db = this.service.store.db;
+    const ownsTransaction = !packageId;
+    if (ownsTransaction) db.exec('BEGIN');
+    try {
+      if (b.chat && !packageId) {
+        const result = db
+          .prepare(
+            'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,fileId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+          )
+          .run(
+            f.id,
+            d.id,
+            d.name,
+            f.createdAt,
+            'encrypted',
+            null,
+            JSON.stringify(e),
+            f.remark,
+            f.remarkStyle,
+            d.platform,
+            'file',
+            f.id,
+          );
+        f.chatMessageId = Number(result.lastInsertRowid);
+      }
+      this.save(f);
+      for (const recipient of recipients)
+        this.service.store.saveTransfer({
+          id: randomUUID(),
+          fileId: f.id,
+          packageId,
+          chatMessageId: f.chatMessageId,
+          stationId: this.service.store.settings.stationId,
+          stationName: this.service.store.settings.stationName,
+          name: f.name,
+          size: f.size,
+          senderId: d.id,
+          senderName: d.name,
+          senderPlatform: d.platform,
+          recipientId: recipient.id,
+          recipientName: recipient.name,
+          recipientPlatform: recipient.platform,
+          status: 'accepted',
+          createdAt: f.createdAt,
+          startedAt: null,
+          completedAt: null,
+          duration: null,
+          uploaded: 0,
+          downloaded: 0,
+          sha256: null,
+          expiresAt: null,
+          cleanedAt: null,
+          error: null,
+          receiveDeadline: null,
+          lastDownloadedAt: null,
+        });
+      if (ownsTransaction) db.exec('COMMIT');
+    } catch (e) {
+      if (ownsTransaction) db.exec('ROLLBACK');
+      throw e;
+    }
+    if (!packageId) this.service.broadcast();
+    return { ...f, transfers: this.transfers(f.id) };
   }
   async upload(r: FastifyRequest, reply: FastifyReply) {
     const d = this.service.device(r),
       f = this.get((r.params as any).id);
+    if (f.packageId) this.service.packages.assertUploading(f.packageId);
+    if (f.removedAt) fail('文件已从待成包清单移除', 409);
     if (f.senderId !== d.id) fail('只有发送设备可以上传', 403);
     if (f.createdAt + 86400000 <= Date.now()) fail('上传任务已过期', 409);
     if (!['waiting', 'failed'].includes(f.state) || this.busy(f.id)) fail('文件不能重复上传', 409);
@@ -405,14 +423,17 @@ export class FileDelivery {
       );
       if (bytes !== f.size) throw new Error('文件大小不匹配');
       const now = Date.now(),
-        receiveDeadline = now + f.bufferMinutes * 60000,
-        expiresAt = receiveDeadline + this.service.store.settings.retentionHours * 3600000;
+        receiveDeadline = f.packageId ? null : now + f.bufferMinutes * 60000,
+        expiresAt =
+          receiveDeadline === null
+            ? null
+            : receiveDeadline + this.service.store.settings.retentionHours * 3600000;
       const checksum = hash.digest('hex');
       if (f.expectedSha256 && checksum !== f.expectedSha256) throw new Error('文件与原任务不一致');
       renameSync(this.filename(f, true), this.filename(f));
       const next = {
         ...f,
-        state: 'ready' as const,
+        state: f.packageId ? ('staged' as const) : ('ready' as const),
         uploaded: bytes,
         uploadedAt: now,
         receiveDeadline,
@@ -421,7 +442,7 @@ export class FileDelivery {
       };
       this.save(next);
       this.patchTransfers(f.id, {
-        status: 'pending',
+        status: f.packageId ? 'accepted' : 'pending',
         uploaded: bytes,
         sha256: next.sha256,
         uploadDuration: now - start,
@@ -432,7 +453,7 @@ export class FileDelivery {
       return { ok: true };
     } catch (e: any) {
       this.save({
-        ...f,
+        ...this.get(f.id),
         state: 'failed',
         uploaded: bytes,
         error: '上传中断，请重新选择原文件重试',
@@ -456,6 +477,8 @@ export class FileDelivery {
     this.expire(f);
     t = this.service.getTransfer(t.id);
     const now = Date.now();
+    if (t.packageId && d.id === t.senderId && action === 'cancel')
+      fail('请在文件包中取消整包', 409);
     if (action === 'cancel' && (d.id === t.senderId || d.id === t.recipientId)) {
       if (
         !['pending', 'accepted', 'uploading', 'ready', 'downloading', 'awaiting-confirm'].includes(
@@ -467,6 +490,8 @@ export class FileDelivery {
       return this.service.update(t, { status: 'cancelled', error: '该接收任务已取消' });
     }
     if (d.id !== t.recipientId) fail('只有接收设备可以操作', 403);
+    if (f.packageId && this.service.packages.get(f.packageId).state !== 'ready')
+      fail('文件包尚未生效或已取消', 409);
     if (action === 'complete' && t.status === 'completed') return t;
     if (action === 'complete' && t.status === 'awaiting-confirm')
       return this.service.update(t, {
@@ -495,6 +520,8 @@ export class FileDelivery {
       fail('连接凭证无效', 401);
     if (d.id !== t.recipientId) fail('只有接收设备可以下载', 403);
     const f = this.get(t.fileId!);
+    if (f.packageId && this.service.packages.get(f.packageId).state !== 'ready')
+      fail('文件包尚未生效或已取消', 409);
     this.expire(f);
     t = this.service.getTransfer(t.id);
     const now = Date.now();
