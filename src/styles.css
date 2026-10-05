@@ -4928,3 +4928,22 @@ textarea {
   gap: 8px;
   font-size: var(--text-sm);
 }
+
+.connection-diagnosis {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.connection-diagnosis p {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.connection-diagnosis strong {
+  flex: 0 0 84px;
+}
+.connection-diagnosis details p {
+  display: block;
+}

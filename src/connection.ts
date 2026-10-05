@@ -45,7 +45,7 @@ export function connectStation(
     socket = current;
     const active = () => !stopped && socket === current;
     current.onopen = () => {
-      if (active()) callbacks.status('connected');
+      // 只有首个合法状态到达后，才确认配对和实时连接全部成功。
     };
     current.onmessage = (event) => {
       if (!active()) return;
@@ -75,6 +75,7 @@ export function connectStation(
         supportsHeartbeat = hub.connectionHeartbeat === true;
         lastReply = Date.now();
         attempts = 0;
+        callbacks.status('connected');
         callbacks.state(hub);
       } catch (error) {
         callbacks.error(error);

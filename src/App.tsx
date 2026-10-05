@@ -1,3 +1,9 @@
+import {
+  diagnoseHttp,
+  diagnosisText,
+  pairingFailure,
+  type ConnectionDiagnosis,
+} from './connectionDiagnosis';
 import { deliverFile } from './fileDelivery';
 import { deliverPackage, rememberPackages } from './packageDelivery';
 import { PackageDialog } from './components/PackageDialog';
@@ -658,6 +664,21 @@ export default function App() {
       color: { dark: '#263544', light: '#fafbfc' },
     }).then(setQr);
   }, [admin?.running, admin?.pairingToken, JSON.stringify(admin?.addresses), address]);
+  const [connectionDiagnosis, setConnectionDiagnosis] = useState<ConnectionDiagnosis | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  async function checkConnection() {
+    setDiagnosing(true);
+    try {
+      const expected = discoveredSelection?.stationId;
+      setConnectionDiagnosis(
+        await (window.relay3
+          ? window.relay3.diagnoseConnection(connectUrl, expected)
+          : diagnoseHttp(connectUrl, expected)),
+      );
+    } finally {
+      setDiagnosing(false);
+    }
+  }
   async function join(baseInput = connectUrl, codeInput = pairing) {
     let u: URL;
     try {
@@ -711,7 +732,15 @@ export default function App() {
         ...(old?.token ? {} : pairingBody),
       });
     } catch (e: any) {
-      if (!old?.token || e.status !== 401 || !code.trim()) throw e;
+      if (!old?.token || e.status !== 401 || !code.trim()) {
+        setConnectionDiagnosis({
+          base,
+          checkedAt: Date.now(),
+          steps: [{ name: '实际配对', state: 'failed', detail: pairingFailure(e) }],
+          advice: [],
+        });
+        throw e;
+      }
       result = await request<any>(base, '', '/api/join', { ...body, ...pairingBody });
     }
     await rememberConnection(base, result);
@@ -2566,6 +2595,36 @@ export default function App() {
               </small>
             </label>
           </form>
+          <div className="actions">
+            <Button disabled={diagnosing || busy} onClick={() => void run(checkConnection)}>
+              <ScanEye size={16} />
+              {diagnosing ? '检查中…' : '检查连接'}
+            </Button>
+            {connectionDiagnosis && (
+              <Button onClick={() => void run(() => copy(diagnosisText(connectionDiagnosis)))}>
+                <Copy size={16} />
+                复制检查报告
+              </Button>
+            )}
+          </div>
+          {connectionDiagnosis && (
+            <section className="connection-diagnosis" aria-label="连接检查结果" aria-live="polite">
+              {connectionDiagnosis.steps.map((s, i) => (
+                <p key={i}>
+                  <strong>{s.name}</strong>
+                  <span className={s.state === 'failed' ? 'error-text' : 'subtle'}>{s.detail}</span>
+                </p>
+              ))}
+              {connectionDiagnosis.advice.length > 0 && (
+                <details>
+                  <summary>排查步骤</summary>
+                  {connectionDiagnosis.advice.map((a) => (
+                    <p key={a}>{a}</p>
+                  ))}
+                </details>
+              )}
+            </section>
+          )}
           {Object.keys(savedHubs).length > 0 && !(desktop && discoveredSelection) && (
             <SavedStations
               stations={Object.values(savedHubs)}

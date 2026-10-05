@@ -21,6 +21,7 @@ import {
 } from 'electron';
 import { generateIdentity, validIdentity } from '../src/chat/crypto';
 import { RelayService } from '../server/service';
+import { diagnoseConnection } from './connectionDiagnosis';
 import { StationDiscovery, probeStation } from './discovery';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -174,6 +175,11 @@ else {
           }
         });
       handler('diagnostic-info', diagnosticInfo);
+      handler('connection-diagnose', (raw: string, expected?: string) =>
+        diagnoseConnection(raw, expected, (url, options) =>
+          net.fetch(url instanceof URL ? url.toString() : url, options),
+        ),
+      );
       handler('discovery-start', () => discovery.start());
       handler('discovery-snapshot', () => discovery.snapshot());
       handler('discovery-refresh', () => discovery.refresh());

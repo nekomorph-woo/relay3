@@ -75,6 +75,10 @@ export interface CacheState {
 declare global {
   interface Window {
     relay3?: {
+      diagnoseConnection(
+        raw: string,
+        expected?: string,
+      ): Promise<import('./connectionDiagnosis').ConnectionDiagnosis>;
       startDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
       discoverySnapshot(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
       refreshDiscovery(): Promise<import('./discoveryTypes').DiscoverySnapshot>;
