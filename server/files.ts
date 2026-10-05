@@ -388,7 +388,7 @@ export class FileDelivery {
     const d = this.service.device(r),
       f = this.get((r.params as any).id);
     if (f.packageId) this.service.packages.assertUploading(f.packageId);
-    if (f.removedAt) fail('文件已从待成包清单移除', 409);
+    if (f.removedAt) fail('文件已从发送清单移除', 409);
     if (f.senderId !== d.id) fail('只有发送设备可以上传', 403);
     if (f.createdAt + 86400000 <= Date.now()) fail('上传任务已过期', 409);
     if (!['waiting', 'failed'].includes(f.state) || this.busy(f.id)) fail('文件不能重复上传', 409);
@@ -486,7 +486,7 @@ export class FileDelivery {
     t = this.service.getTransfer(t.id);
     const now = Date.now();
     if (t.packageId && d.id === t.senderId && action === 'cancel')
-      fail('请在文件包中取消整包', 409);
+      fail('请在传输详情中取消本次发送', 409);
     if (action === 'cancel' && (d.id === t.senderId || d.id === t.recipientId)) {
       if (
         !['pending', 'accepted', 'uploading', 'ready', 'downloading', 'awaiting-confirm'].includes(
@@ -503,7 +503,7 @@ export class FileDelivery {
       (!this.service.packages.authorized(this.service.packages.get(f.packageId), d.id) ||
         this.service.packages.get(f.packageId).state !== 'ready')
     )
-      fail('文件包尚未生效或已取消', 409);
+      fail('文件尚未发送或已取消', 409);
     if (action === 'complete' && t.status === 'completed') return t;
     if (action === 'complete' && t.status === 'awaiting-confirm')
       return this.service.update(t, {
@@ -537,7 +537,7 @@ export class FileDelivery {
       (!this.service.packages.authorized(this.service.packages.get(f.packageId), d.id) ||
         this.service.packages.get(f.packageId).state !== 'ready')
     )
-      fail('文件包尚未生效或已取消', 409);
+      fail('文件尚未发送或已取消', 409);
     this.expire(f);
     t = this.service.getTransfer(t.id);
     const now = Date.now();

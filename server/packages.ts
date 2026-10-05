@@ -59,7 +59,7 @@ export class FilePackages {
     const row = this.service.store.db
       .prepare('SELECT data FROM file_packages WHERE id=?')
       .get(id) as { data: string } | undefined;
-    return row ? JSON.parse(row.data) : fail('文件包不存在', 404);
+    return row ? JSON.parse(row.data) : fail('发送记录不存在', 404);
   }
   save(p: FilePackage) {
     this.service.store.db
@@ -87,7 +87,7 @@ export class FilePackages {
   }
   view(p: FilePackage, id?: string): PackageView {
     if (id && (!this.authorized(p, id) || (!p.readyAt && id !== p.senderId)))
-      fail('无权查看此文件包', 403);
+      fail('无权查看这些文件', 403);
     const { requestHash, ...visible } = p;
     return {
       ...visible,
@@ -119,12 +119,12 @@ export class FilePackages {
   assertUploading(id: string) {
     const p = this.get(id);
     if (p.state !== 'uploading' || p.createdAt + 86400000 <= Date.now() || this.mutating.has(id))
-      fail('文件包已生效、已取消或正在修改', 409);
+      fail('发送已完成、已取消或正在修改', 409);
     return p;
   }
   owner(id: string, deviceId: string) {
     const p = this.get(id);
-    if (p.senderId !== deviceId) fail('只有发送者可以管理文件包', 403);
+    if (p.senderId !== deviceId) fail('只有发送者可以管理本次发送', 403);
     return p;
   }
   create(d: Device, b: any) {
@@ -136,16 +136,16 @@ export class FilePackages {
       b.files.length > 100 ||
       new Set(b.files.map((f: any) => f?.id)).size !== b.files.length
     )
-      fail('文件包清单无效，每包最多100个文件');
+      fail('发送清单无效，每次最多100个文件');
     const hash = createHash('sha256').update(JSON.stringify(b)).digest('hex');
     const existing = this.all().find((p) => p.id === b.id);
     if (existing) {
       if (existing.senderId !== d.id || existing.requestHash !== hash)
-        fail('文件包标识或清单不一致', 409);
+        fail('发送标识或清单不一致', 409);
       return this.view(existing, d.id);
     }
     if (this.all().filter((p) => p.senderId === d.id && p.state === 'uploading').length >= 10)
-      fail('待成包任务过多', 409);
+      fail('待发送任务过多', 409);
     if (
       b.files.some(
         (f: any) =>
@@ -156,7 +156,7 @@ export class FilePackages {
     )
       fail('文件标识重复或缺少内容校验');
     if (!Number.isSafeInteger(b.files.reduce((sum: number, f: any) => sum + f.size, 0)))
-      fail('文件包大小无效');
+      fail('文件总大小无效');
     const p: FilePackage = {
       id: b.id,
       stationId: this.service.store.settings.stationId,
@@ -212,7 +212,7 @@ export class FilePackages {
           JSON.stringify(e.recipients.map((r) => [r.id, r.publicKey])) !==
             JSON.stringify(original.recipients.map((r) => [r.id, r.publicKey]))
         )
-          fail('文件包密文无效');
+          fail('发送信息密文无效');
       }
       this.save(p);
       db.exec('COMMIT');
@@ -237,7 +237,7 @@ export class FilePackages {
           !existsSync(this.service.files.filename(f)),
       )
     )
-      fail('还有文件未上传成功，请重传或移除失败文件', 409);
+      fail('还有文件未上传成功，请重传或移除未成功文件', 409);
     // 以保留成员最后上传成功时间为准，所有记录写入同一时间，重试发布不延长。
     const readyAt = Math.max(...files.map((f) => f.uploadedAt!));
     const receiveDeadline = readyAt + p.bufferMinutes * 60000,
@@ -306,7 +306,7 @@ export class FilePackages {
           fail('只能移除未上传成功且未在传输的文件', 409);
         return f;
       });
-    if (members.length === ids.length) fail('请至少保留一个文件，或取消整个文件包');
+    if (members.length === ids.length) fail('请至少保留一个文件，或取消发送');
     this.mutating.add(id);
     try {
       for (const f of files) await this.service.files.remove(f.id);
@@ -322,7 +322,7 @@ export class FilePackages {
               ...t,
               status: 'cancelled',
               cleanedAt: removedAt,
-              error: '成包前已移除',
+              error: '发送前已移除',
             });
         }
         db.exec('COMMIT');
@@ -338,7 +338,7 @@ export class FilePackages {
   }
   async cancel(id: string, deviceId: string) {
     const p = this.owner(id, deviceId);
-    if (this.mutating.has(id)) fail('文件包正在修改', 409);
+    if (this.mutating.has(id)) fail('发送清单正在修改', 409);
     if (p.state === 'cancelled') return this.view(p, deviceId);
     const db = this.service.store.db,
       cancelledAt = Date.now();
@@ -358,7 +358,7 @@ export class FilePackages {
             this.service.store.saveTransfer({
               ...t,
               status: 'cancelled',
-              error: '发送者已取消文件包',
+              error: '发送者已取消本次发送',
             });
         }
       }
@@ -413,7 +413,7 @@ export class FilePackages {
     const p = this.owner(id, deviceId),
       now = Date.now();
     if (p.state !== 'ready' || !p.receiveDeadline || now >= p.receiveDeadline)
-      fail('文件包已结束或超过接收期限', 409);
+      fail('发送已结束或超过接收期限', 409);
     const notified: string[] = [],
       skipped: string[] = [];
     for (const d of p.recipients) {
@@ -457,7 +457,7 @@ export class FilePackages {
     return { notified, skipped };
   }
   remember(views: PackageView[]) {
-    if (!Array.isArray(views) || views.length > 100) fail('文件包记录无效');
+    if (!Array.isArray(views) || views.length > 100) fail('发送记录无效');
     const self = this.service.store.settings.deviceId;
     for (const p of views) {
       if (
@@ -469,7 +469,7 @@ export class FilePackages {
         !Array.isArray(p.recipients) ||
         (p.senderId !== self && !p.recipients.some((d) => d.id === self))
       )
-        fail('文件包来源或身份无效');
+        fail('发送来源或身份无效');
       if (p.stationId === this.service.store.settings.stationId) continue;
       const previous = this.service.store.db
         .prepare('SELECT data FROM remote_packages WHERE id=?')

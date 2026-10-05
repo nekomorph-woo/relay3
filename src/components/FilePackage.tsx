@@ -17,6 +17,7 @@ import { FileTask, resolveFileName, type LocalFile } from './FileTask';
 import { DeviceAvatar } from './DeviceAvatar';
 import { DeviceTag } from './DeviceTag';
 import { Tooltip } from './Tooltip';
+import { DeliveryTitle } from './DeliveryTitle';
 import { ChatDialog } from '../chat/ChatDialog';
 
 const available = (t: Transfer, local?: LocalFile) =>
@@ -93,7 +94,7 @@ export function FilePackageCard({
             session!.token,
             `/api/packages/${p.id}`,
           );
-          if (fresh.state !== 'ready') throw new Error('文件包已取消');
+          if (fresh.state !== 'ready') throw new Error('发送已取消');
           const file = fresh.files.find((f) => f.id === id)!,
             task = file?.transfers.find((t) => t.recipientId === session!.id);
           if (!task) throw new Error('文件已不可用');
@@ -167,7 +168,9 @@ export function FilePackageCard({
       >
         <FileBox size={24} />
         <span>
-          <strong>文件包 · {p.files.length} 个文件</strong>
+          <strong>
+            <DeliveryTitle files={p.files} session={session} />
+          </strong>
           <small>
             {sizes(p.files.reduce((n, f) => n + f.size, 0))} ·{' '}
             {p.senderId === session?.id ? '发送' : `来自 ${p.senderName}`} · {p.stationName}
@@ -177,7 +180,7 @@ export function FilePackageCard({
           {p.state === 'cancelled'
             ? '已取消'
             : p.state === 'uploading'
-              ? `待成包 · 已上传 ${uploaded}/${p.files.length}`
+              ? `尚未发送 · 已上传 ${uploaded}/${p.files.length}`
               : p.files.every((f) => f.cleanedAt)
                 ? '缓存已清理'
                 : Date.now() >= (p.receiveDeadline ?? 0)
@@ -270,7 +273,7 @@ export function FilePackageCard({
               {p.files.length > 8 && (
                 <div className="package-pagination">
                   <button
-                    aria-label="文件包上一页"
+                    aria-label="文件上一页"
                     disabled={!page}
                     onClick={() => setPage(page - 1)}
                   >
@@ -281,7 +284,7 @@ export function FilePackageCard({
                     {Math.ceil(p.files.length / 8)}
                   </span>
                   <button
-                    aria-label="文件包下一页"
+                    aria-label="文件下一页"
                     disabled={(page + 1) * 8 >= p.files.length}
                     onClick={() => setPage(page + 1)}
                   >
@@ -293,7 +296,7 @@ export function FilePackageCard({
           ) : (
             <>
               <input
-                aria-label="搜索文件包接收设备"
+                aria-label="搜索接收设备"
                 placeholder="搜索接收设备"
                 value={query}
                 onChange={(e) => {
@@ -379,7 +382,7 @@ export function FilePackageCard({
               {recipientRows.length > 4 && (
                 <div className="package-pagination">
                   <button
-                    aria-label="文件包设备上一页"
+                    aria-label="接收设备上一页"
                     disabled={!devicePage}
                     onClick={() => setDevicePage(devicePage - 1)}
                   >
@@ -389,7 +392,7 @@ export function FilePackageCard({
                     {devicePage + 1}/{Math.ceil(recipientRows.length / 4)}
                   </span>
                   <button
-                    aria-label="文件包设备下一页"
+                    aria-label="接收设备下一页"
                     disabled={(devicePage + 1) * 4 >= recipientRows.length}
                     onClick={() => setDevicePage(devicePage + 1)}
                   >
@@ -399,7 +402,7 @@ export function FilePackageCard({
               )}
             </>
           )}
-          {p.removedCount > 0 && <small>成包前已移除 {p.removedCount} 个未成功上传的文件</small>}
+          {p.removedCount > 0 && <small>发送前已移除 {p.removedCount} 个未成功上传的文件</small>}
           {canOperate && (
             <div className="package-actions">
               {sender && p.state === 'uploading' && (
@@ -417,9 +420,9 @@ export function FilePackageCard({
                       })
                     }
                   >
-                    {uploaded === p.files.length ? '完成成包' : '移除未成功文件并成包'}
+                    {uploaded === p.files.length ? '完成发送' : '仅发送已上传文件'}
                   </button>
-                  <Tooltip text="保留已完整上传的文件，移除失败或尚未上传的成员；成包后清单不能再改。">
+                  <Tooltip text="仅保留上传成功的文件，移除未成功文件；发送后清单无法修改。">
                     <CircleHelp size={14} />
                   </Tooltip>
                 </>
@@ -440,7 +443,7 @@ export function FilePackageCard({
               )}
               {sender && p.state !== 'cancelled' && (
                 <button disabled={busy} onClick={() => setConfirmCancel(true)}>
-                  取消发送文件包
+                  取消发送
                 </button>
               )}
               {!sender && p.state === 'ready' && (
@@ -500,15 +503,15 @@ export function FilePackageCard({
         </div>
       )}
       {confirmCancel && (
-        <ChatDialog label="取消文件包" dismissible={false} onClose={() => setConfirmCancel(false)}>
+        <ChatDialog label="取消发送" dismissible={false} onClose={() => setConfirmCancel(false)}>
           <div className="chat-modal">
             <div className="section-head">
-              <h2>取消文件包</h2>
-              <button aria-label="关闭取消文件包" onClick={() => setConfirmCancel(false)}>
+              <h2>取消发送</h2>
+              <button aria-label="关闭取消发送" onClick={() => setConfirmCancel(false)}>
                 <X size={18} />
               </button>
             </div>
-            <p>停止整个文件包的上传和下载。已收到的本地文件与历史记录保留。</p>
+            <p>停止本次发送的全部文件上传和下载。已收到的本地文件与历史记录保留。</p>
             <button
               className="danger"
               disabled={busy}
@@ -607,7 +610,7 @@ function PackageFileRow({
               : {
                   waiting: '等待上传',
                   uploading: `上传中 ${sizes(f.uploaded)}/${sizes(f.size)}`,
-                  staged: '已上传 · 等待成包',
+                  staged: '已上传 · 等待发送',
                   ready: '已上传',
                   failed: '上传失败',
                   cleaned: '中转缓存已清理',

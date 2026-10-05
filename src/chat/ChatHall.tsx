@@ -4,6 +4,8 @@ import { FileTask, UnknownFile, type LocalFile } from '../components/FileTask';
 import { Recipients, ReceiveBuffer } from '../components/Recipients';
 import { deliverFile } from '../fileDelivery';
 import { deliverPackage } from '../packageDelivery';
+import { DeliveryTitle } from '../components/DeliveryTitle';
+import type { PackageView } from '../../server/packages';
 import { PackageDialog } from '../components/PackageDialog';
 import { FileBox } from 'lucide-react';
 import { FileUp, File } from 'lucide-react';
@@ -89,6 +91,7 @@ export function ChatHall({
     [fileRecipients, setFileRecipients] = useState<string[]>([]),
     [fileBuffer, setFileBuffer] = useState(stored('relay3-receive-buffer', 1440));
   const fileDraftIds = useRef(new WeakMap<File, string>());
+  const [packageFiles, setPackageFiles] = useState<Record<string, SharedFile[]>>({});
   const [fileStates, setFileStates] = useState<Record<string, SharedFile>>({});
   const [remark, setRemark] = useState(''),
     [remarkStyle, setRemarkStyle] = useState<'hint' | 'note' | 'clue'>('note');
@@ -166,6 +169,40 @@ export function ChatHall({
       dead = true;
     };
   }, [rows, transfers, connected, visible, session.token]);
+  useEffect(() => {
+    if (!connected || !visible || !identity) return;
+    let dead = false;
+    // 未授权消息不请求明细，避免泄漏数量、名称或接收名单。
+    const ids = [
+      ...new Set(
+        [...rows, ...cipherRows.items]
+          .filter(
+            (m) =>
+              m.kind === 'package' && m.packageId && display(m).open && !packageFiles[m.packageId],
+          )
+          .map((m) => m.packageId!),
+      ),
+    ];
+    void Promise.all(
+      ids.map(async (id) => {
+        const p = await request<PackageView>(
+          session.base,
+          session.token,
+          `/api/packages/${id}`,
+        ).catch(() => null);
+        return p ? ([id, p.files] as const) : null;
+      }),
+    ).then((entries) => {
+      if (!dead && entries.some(Boolean))
+        setPackageFiles((old) => ({
+          ...old,
+          ...Object.fromEntries(entries.filter((entry) => entry !== null)),
+        }));
+    });
+    return () => {
+      dead = true;
+    };
+  }, [rows, cipherRows.items, connected, visible, identity, session.token, session.stationId]);
   async function sendFiles() {
     if (!identity || !info || !chatFiles.length || !fileRecipients.length) return;
     setBusy(true);
@@ -691,10 +728,16 @@ export function ChatHall({
                 if (value.open && m.packageId) setOpenedPackage(m.packageId);
               }}
               disabled={!value.open}
-              aria-label={value.open ? '打开文件包' : '未知文件包'}
+              aria-label={value.open ? '查看文件' : '未知文件'}
             >
               <FileBox size={24} />
-              <span>{value.open ? '文件包 · 点击查看' : '未知文件包'}</span>
+              <span>
+                {value.open ? (
+                  <DeliveryTitle files={packageFiles[m.packageId!] ?? []} session={session} />
+                ) : (
+                  '未知文件'
+                )}
+              </span>
             </button>
           ) : m.kind === 'file' ? (
             <div className="chat-file-message">

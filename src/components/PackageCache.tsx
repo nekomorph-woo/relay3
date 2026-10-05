@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FileBox, ChevronDown, FolderOpen } from 'lucide-react';
 import type { PackageView } from '../../server/packages';
 import { sizes, date, type CacheState, type Session } from '../api';
+import { DeliveryTitle } from './DeliveryTitle';
 import { TransferName } from './FileTask';
 export function PackageCache({
   id,
@@ -48,7 +49,7 @@ export function PackageCache({
       <div className="package-cache-heading">
         <input
           type="checkbox"
-          aria-label="选择整个文件包缓存"
+          aria-label="选择本次发送的全部缓存"
           checked={chosen}
           onChange={() =>
             setSelected(
@@ -61,20 +62,22 @@ export function PackageCache({
         <button className="package-summary" onClick={() => setOpen(!open)} aria-expanded={open}>
           <FileBox size={24} />
           <span>
-            <strong>文件包 · {ids.length} 份缓存</strong>
+            <strong>
+              {p ? <DeliveryTitle files={p.files} session={session} /> : '正在读取文件…'}
+            </strong>
             <small>
               {sizes(entries.reduce((sum, e) => sum + e.bytes, 0))}
               {p ? ` · ${p.senderName}` : ''}
-              {p?.state === 'uploading' ? ' · 尚未成包' : ''}
+              {p?.state === 'uploading' ? ' · 尚未发送' : ''}
             </small>
           </span>
           <ChevronDown size={16} className={open ? 'expanded' : ''} />
         </button>
-        <button onClick={() => onClean(ids)}>清理文件包</button>
+        <button onClick={() => onClean(ids)}>清理缓存</button>
       </div>
       {open && (
         <div className="package-body">
-          <small>{p?.expiresAt ? `自动清理：${date(p.expiresAt)}` : '成包后统一计时'}</small>
+          <small>{p?.expiresAt ? `自动清理：${date(p.expiresAt)}` : '发送后统一计时'}</small>
           {entries.slice(page * 8, (page + 1) * 8).map((e) => (
             <div className="package-file-row" key={e.folder + e.id}>
               <input
@@ -107,7 +110,7 @@ export function PackageCache({
                   {e.folder === 'partial'
                     ? '上传未完成'
                     : p?.state === 'uploading'
-                      ? '暂存 · 等待成包'
+                      ? '暂存 · 等待发送'
                       : '完整缓存'}
                   {e.busy ? ' · 正在传输' : ''}
                 </small>

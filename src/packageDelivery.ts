@@ -51,7 +51,7 @@ export async function deliverPackage(
   bufferMinutes: number,
   options: { keys?: ChatRecipient[]; remark?: string; remarkStyle?: string } = {},
 ) {
-  if (!files.length || files.length > 100) throw new Error('每个文件包可选择1至100个文件');
+  if (!files.length || files.length > 100) throw new Error('每次发送可选择1至100个文件');
   const signature = JSON.stringify([
     session.stationId,
     [...recipientIds].sort(),

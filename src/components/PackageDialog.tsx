@@ -51,14 +51,14 @@ export function PackageDialog({
     };
   }, [id, session.stationId, connected, revision]);
   return (
-    <ChatDialog label="文件包详情" dismissible={false} onClose={onClose}>
+    <ChatDialog label="文件详情" dismissible={false} onClose={onClose}>
       <section className="package-dialog panel">
         <header className="dialog-head">
           <h2>
             <FileBox size={20} />
-            文件包
+            文件详情
           </h2>
-          <button aria-label="关闭文件包详情" onClick={onClose}>
+          <button aria-label="关闭文件详情" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
@@ -80,7 +80,7 @@ export function PackageDialog({
               onError={onError}
             />
           ) : (
-            <p>{connected ? '正在读取文件包…' : '中转站已断开'}</p>
+            <p>{connected ? '正在读取文件…' : '中转站已断开'}</p>
           )}
         </div>
       </section>

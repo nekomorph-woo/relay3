@@ -771,8 +771,8 @@ export default function App() {
       setFiles([]);
       inform(
         result.state === 'ready'
-          ? '文件包已生效，接收设备可独立处理'
-          : '部分文件上传失败，请在文件包中重传或移除未成功文件',
+          ? '文件已发送，接收设备可独立处理'
+          : '部分文件上传失败，请在传输详情中重传或移除未成功文件',
         result.state !== 'ready',
       );
     } else {
@@ -1068,7 +1068,7 @@ export default function App() {
           </div>
           {packageReminder && (
             <div className="package-reminder" role="status">
-              <span>{packageReminder.senderName} 提醒你处理文件包</span>
+              <span>{packageReminder.senderName} 提醒你接收文件</span>
               <button
                 onClick={() => {
                   setReminderDialog({
@@ -1078,9 +1078,9 @@ export default function App() {
                   setPackageReminder(null);
                 }}
               >
-                查看文件包
+                查看文件
               </button>
-              <button aria-label="关闭文件包提醒" onClick={() => setPackageReminder(null)}>
+              <button aria-label="关闭文件提醒" onClick={() => setPackageReminder(null)}>
                 <X size={16} />
               </button>
             </div>

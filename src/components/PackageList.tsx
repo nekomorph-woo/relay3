@@ -110,11 +110,11 @@ export function PackageList({
       ),
   );
   return (
-    <div className="package-list" aria-label="文件包列表">
+    <div className="package-list" aria-label="传输列表">
       {error && <p role="alert">{error}</p>}
       {!visible.length && (
         <p className="package-empty">
-          {loaded ? '暂无待处理文件包' : connected ? '正在读取文件包…' : '中转站已断开'}
+          {loaded ? '暂无待处理文件' : connected ? '正在读取文件…' : '中转站已断开'}
         </p>
       )}
       {visible.map((p) => (
@@ -132,7 +132,7 @@ export function PackageList({
       {total > 30 && (
         <div className="package-pagination">
           <button
-            aria-label="文件包列表上一页"
+            aria-label="传输列表上一页"
             disabled={!offset}
             onClick={() => setOffset(offset - 30)}
           >
@@ -142,7 +142,7 @@ export function PackageList({
             {Math.floor(offset / 30) + 1}/{Math.ceil(total / 30)}
           </span>
           <button
-            aria-label="文件包列表下一页"
+            aria-label="传输列表下一页"
             disabled={offset + 30 >= total}
             onClick={() => setOffset(offset + 30)}
           >

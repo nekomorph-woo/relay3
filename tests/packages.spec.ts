@@ -121,13 +121,14 @@ test('多文件成包、跨页部分下载与完整发送记录', async () => {
   const { id, card } = await send(
     Array.from({ length: 10 }, (_, i) => ({ name: `跨页文件${i}.txt`, content: `内容${i}` })),
   );
+  await expect(card.locator('.package-summary strong')).toHaveText('跨页文件0.txt 等 10 个文件');
   await card.locator('.package-summary').click();
   await expect(card.locator('.package-file-row')).toHaveCount(8);
-  await card.getByRole('button', { name: '文件包下一页' }).click();
+  await card.getByRole('button', { name: '文件下一页' }).click();
   await expect(card.locator('.package-file-row')).toHaveCount(2);
   const receiver = phone.locator(`[data-package-id="${id}"]`);
   await receiver.getByLabel('选择 跨页文件0.txt', { exact: true }).check();
-  await receiver.getByRole('button', { name: '文件包下一页' }).click();
+  await receiver.getByRole('button', { name: '文件下一页' }).click();
   await receiver.getByLabel('选择 跨页文件9.txt', { exact: true }).check();
   const downloads: string[] = [];
   phone.on('download', (d) => downloads.push(d.suggestedFilename()));
@@ -140,7 +141,7 @@ test('多文件成包、跨页部分下载与完整发送记录', async () => {
   ).toHaveLength(2);
   expect(record.files.filter((f: any) => f.transfers[0].status === 'pending')).toHaveLength(8);
   await receiver.getByRole('button', { name: '确认收到' }).click();
-  await receiver.getByRole('button', { name: '文件包上一页' }).click();
+  await receiver.getByRole('button', { name: '文件上一页' }).click();
   await receiver.getByRole('button', { name: '确认收到' }).click();
   await card.getByRole('button', { name: '接收设备 · 1' }).click();
   await card.locator('.package-recipient-detail summary').click();
@@ -162,7 +163,7 @@ test('失败文件独立重传或移除，完成前接收者无入口', async ()
     { name: '成功.txt', content: '成功' },
     { name: '失败.txt', content: '失败' },
   ]);
-  await expect(first.card).toContainText('待成包 · 已上传 1/2');
+  await expect(first.card).toContainText('尚未发送 · 已上传 1/2');
   await expect(phone.locator(`[data-package-id="${first.id}"]`)).toHaveCount(0);
   await first.card
     .getByLabel('重传 失败.txt', { exact: true })
@@ -180,9 +181,9 @@ test('失败文件独立重传或移除，完成前接收者无入口', async ()
     { name: '保留.txt', content: '保留' },
     { name: '移除.txt', content: '失败' },
   ]);
-  await second.card.getByRole('button', { name: '移除未成功文件并成包' }).click();
-  await expect(second.card).toContainText('文件包 · 1 个文件');
-  await expect(second.card).toContainText('成包前已移除 1');
+  await second.card.getByRole('button', { name: '仅发送已上传文件' }).click();
+  await expect(second.card.locator('.package-summary strong')).toHaveText('保留.txt');
+  await expect(second.card).toContainText('发送前已移除 1');
   const p = await admin('/packages/' + second.id);
   expect(p.files).toHaveLength(1);
   expect(p.readyAt).toBe(p.files[0].uploadedAt);
@@ -194,14 +195,14 @@ test('提醒进入指定文件包；群聊无权限只展示通用入口，窄�
   await phone.getByRole('button', { name: '群聊大厅', exact: true }).click();
   await card.locator('.package-summary').click();
   await card.getByRole('button', { name: '提醒未处理设备' }).click();
-  await expect(phone.locator('.package-reminder')).toContainText('提醒你处理文件包');
+  await expect(phone.locator('.package-reminder')).toContainText('提醒你接收文件');
   await expect(phone.locator('.chat-hall')).toBeVisible();
-  await phone.getByRole('button', { name: '查看文件包', exact: true }).click();
-  const detail = phone.getByRole('dialog', { name: '文件包详情' });
+  await phone.getByRole('button', { name: '查看文件', exact: true }).click();
+  const detail = phone.getByRole('dialog', { name: '文件详情' });
   await expect(detail).toContainText('提醒.txt');
   await detail.press('Escape');
   await expect(detail).toBeVisible();
-  await detail.getByRole('button', { name: '关闭文件包详情' }).click();
+  await detail.getByRole('button', { name: '关闭文件详情' }).click();
   await desktop.getByRole('button', { name: '群聊大厅', exact: true }).click();
   await desktop.getByRole('button', { name: '发送文件', exact: true }).click();
   const modal = desktop.getByRole('dialog', { name: '发送文件', exact: true });
@@ -215,8 +216,10 @@ test('提醒进入指定文件包；群聊无权限只展示通用入口，窄�
   await modal.getByLabel('文件公开备注').fill('检查包权限');
   await modal.getByRole('button', { name: '发送文件', exact: true }).click();
   const message = phone.locator('.bbs-message').filter({ hasText: '检查包权限' });
-  await expect(message).not.toContainText('只有授权者知道');
-  await message.getByRole('button', { name: '打开文件包' }).click();
+  await expect(message.locator('.chat-package-button')).toContainText(
+    '只有授权者知道.txt 等 2 个文件',
+  );
+  await message.getByRole('button', { name: '查看文件' }).click();
   await expect(detail).toContainText('只有授权者知道');
   for (const width of [320, 375, 768]) {
     await phone.setViewportSize({ width, height: 700 });
@@ -229,13 +232,13 @@ test('提醒进入指定文件包；群聊无权限只展示通用入口，窄�
     );
   }
   await phone.screenshot({ path: 'test-results/package-phone-chat.png' });
-  await detail.getByRole('button', { name: '关闭文件包详情' }).click();
+  await detail.getByRole('button', { name: '关闭文件详情' }).click();
   const other = await browser.newPage({ viewport: { width: 375, height: 812 } });
   await join(other, '旁观者');
   await other.getByRole('button', { name: '群聊大厅', exact: true }).click();
   await other.getByRole('button', { name: '关闭密文汇总' }).click();
   const unknown = other.locator('.bbs-message').filter({ hasText: '检查包权限' });
-  await expect(unknown.getByRole('button', { name: '未知文件包' })).toBeDisabled();
+  await expect(unknown.getByRole('button', { name: '未知文件' })).toBeDisabled();
   await expect(unknown).not.toContainText('个文件');
   await expect(unknown).not.toContainText('私密');
   await other.close();
@@ -247,7 +250,7 @@ test('文件包缓存按包清理前确认，整包取消保存记录', async ()
     { name: '取消二.txt', content: '取消2' },
   ]);
   await card.locator('.package-summary').click();
-  await card.getByRole('button', { name: '取消发送文件包' }).click();
+  await card.getByRole('button', { name: '取消发送' }).click();
   await desktop.getByRole('button', { name: '确认取消', exact: true }).click();
   await expect(card).toHaveCount(0);
   expect((await admin('/packages/' + id)).state).toBe('cancelled');
@@ -257,8 +260,8 @@ test('文件包缓存按包清理前确认，整包取消保存记录', async ()
   ]);
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
   const cache = desktop.locator(`[data-scroll-id="cache-package:${next.id}"]`);
-  await expect(cache).toContainText('2 份缓存');
-  await cache.getByRole('button', { name: '清理文件包', exact: true }).click();
+  await expect(cache.locator('.package-summary strong')).toHaveText('缓存一.txt 等 2 个文件');
+  await cache.getByRole('button', { name: '清理缓存', exact: true }).click();
   const confirm = desktop.getByRole('dialog', { name: '清理所选文件' });
   await expect(confirm).toBeVisible();
   expect((await admin('/cache')).entries.filter((e: any) => e.packageId === next.id)).toHaveLength(
