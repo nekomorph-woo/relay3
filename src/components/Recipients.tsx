@@ -1,9 +1,11 @@
+import type { AvatarStyle } from '../avatar';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, ChevronLeft, ChevronRight, CircleHelp, Check } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { DeviceAvatar } from './DeviceAvatar';
 import { DeviceTag } from './DeviceTag';
 interface RecipientDevice {
+  avatar?: AvatarStyle;
   id: string;
   name: string;
   platform: string;
@@ -115,7 +117,7 @@ export function Recipients({
                 )
               }
             />
-            <DeviceAvatar id={d.id} name={d.name} size={28} />
+            <DeviceAvatar id={d.id} name={d.name} avatar={d.avatar} size={28} />
             <span>
               {d.name}
               <DeviceTag platform={d.platform} />

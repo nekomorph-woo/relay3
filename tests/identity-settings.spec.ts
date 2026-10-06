@@ -31,7 +31,24 @@ test('设备弹窗更名更新统一头像，服务端设置独立保存并恢�
     await page.getByRole('button', { name: '设备身份', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '设备身份', exact: true });
     await dialog.getByLabel('设备名称').fill('名称生成头像测试');
+    const beforeRefresh = await dialog.locator('.device-avatar').innerHTML();
+    await dialog.getByRole('button', { name: '刷新头像' }).click();
+    await expect
+      .poll(async () => (await page.evaluate(() => window.relay3!.bootstrap())).avatar)
+      .not.toEqual(initial.avatar);
+    const selectedAvatar = (await page.evaluate(() => window.relay3!.bootstrap())).avatar!;
+    expect(selectedAvatar.theme).not.toBe('folks');
+    expect(selectedAvatar.palette).not.toBe('coast');
     const draftAvatar = await dialog.locator('.device-avatar').innerHTML();
+    expect(draftAvatar).not.toBe(beforeRefresh);
+    const refreshButton = dialog.getByRole('button', { name: '刷新头像' });
+    expect(await refreshButton.evaluate((button) => getComputedStyle(button).borderTopWidth)).toBe(
+      '0px',
+    );
+    const portrait = await dialog.locator('.device-avatar').boundingBox();
+    const refresh = await refreshButton.boundingBox();
+    expect(refresh!.x).toBeGreaterThan(portrait!.x + portrait!.width / 2);
+    expect(refresh!.y).toBeGreaterThan(portrait!.y + portrait!.height / 2);
     expect(draftAvatar).not.toBe(oldAvatar);
     await page.keyboard.press('Escape');
     await page.mouse.click(2, 2);
@@ -71,6 +88,7 @@ test('设备弹窗更名更新统一头像，服务端设置独立保存并恢�
     });
     expect(settings.deviceName).toBe('名称生成头像测试');
     expect(settings.retentionHours).toBe(3);
+    expect(settings.avatar).toEqual(selectedAvatar);
     expect(settings.receiveDir).toBe(initialSettings.receiveDir);
     expect(settings.cacheDir).toBe(initialSettings.cacheDir);
     await page.getByRole('button', { name: '连接中转站', exact: true }).click();
@@ -100,6 +118,7 @@ test('设备弹窗更名更新统一头像，服务端设置独立保存并恢�
     await expect(page.getByRole('heading', { name: '文件传输', exact: true })).toBeVisible();
     await expect(page.locator('.device-self')).toContainText('名称生成头像测试');
     expect(await page.locator('.device-self .device-avatar').innerHTML()).toBe(draftAvatar);
+    expect((await page.evaluate(() => window.relay3!.bootstrap())).avatar).toEqual(selectedAvatar);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

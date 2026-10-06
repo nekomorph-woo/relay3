@@ -4877,7 +4877,7 @@ textarea {
   flex-direction: column;
   gap: 18px;
 }
-.identity-form > .device-avatar {
+.identity-form > .identity-avatar-editor {
   align-self: center;
 }
 .identity-form .identity-code {
@@ -5067,4 +5067,39 @@ textarea {
 .folder-picker .button {
   flex: 1;
   min-width: 0;
+}
+
+/* 刷新仅改变头像外观，按钮叠在右下角，保留足够的点击范围。 */
+.identity-avatar-editor {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+}
+.identity-avatar-editor > .avatar-refresh-anchor {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+}
+.avatar-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.avatar-refresh-button:hover {
+  color: var(--color-ink);
+  background: var(--color-paper-2);
+}
+.avatar-refresh-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

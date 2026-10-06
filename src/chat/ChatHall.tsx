@@ -704,6 +704,7 @@ export function ChatHall({
                       <DeviceAvatar
                         id={d.id}
                         name={d.name}
+                        avatar={d.avatar}
                         size={28}
                         className="chat-device-avatar"
                       />
@@ -734,7 +735,12 @@ export function ChatHall({
         key={m.id}
         data-message-id={m.id}
       >
-        <DeviceAvatar id={m.senderId} name={m.senderName} className="bbs-avatar" />
+        <DeviceAvatar
+          id={m.senderId}
+          name={m.senderName}
+          avatar={devices.find((d) => d.id === m.senderId)?.avatar ?? m.senderAvatar}
+          className="bbs-avatar"
+        />
         <div className="bbs-body">
           <header>
             <strong>

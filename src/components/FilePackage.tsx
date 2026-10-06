@@ -329,7 +329,7 @@ export function FilePackageCard({
                 return (
                   <details className="package-recipient-detail" key={d.id}>
                     <summary className="package-recipient">
-                      <DeviceAvatar id={d.id} name={d.name} size={28} />
+                      <DeviceAvatar id={d.id} name={d.name} avatar={d.avatar} size={28} />
                       <span>
                         {d.name}
                         <DeviceTag platform={d.platform} />

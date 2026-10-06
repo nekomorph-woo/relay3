@@ -250,3 +250,68 @@ test('SQLite中文搜索只索引明文与公开备注，密文不泄漏且查�
     await f.close();
   }
 });
+
+test('头像外观在设备更新、消息快照与重启后保留，拒绝无效主题和配色', async () => {
+  const f = await fixture();
+  try {
+    const a = await f.join('测试设备');
+    const avatar = { theme: 'bots', palette: 'orchid' };
+    assert.equal((await f.call('/api/device', a.token, { name: '测试设备', avatar })).status, 200);
+    assert.deepEqual(f.service.store.device(a.id).avatar, avatar);
+    assert.equal(
+      (
+        await f.call('/api/device', a.token, {
+          name: '测试设备',
+          avatar: { theme: 'unknown', palette: 'coast' },
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await f.call('/api/device', a.token, {
+          name: '测试设备',
+          avatar: { theme: 'bots', palette: '<svg>' },
+        })
+      ).status,
+      400,
+    );
+    const message = await f.call('/api/chat/messages', a.token, {
+      clientId: randomUUID(),
+      mode: 'plain',
+      content: '头像测试',
+      remark: '',
+      remarkStyle: 'note',
+    });
+    assert.equal(message.status, 200);
+    assert.deepEqual(message.data.senderAvatar, avatar);
+    // 老客户端不带外观时不覆盖已选头像。
+    await f.call('/api/device', a.token, { name: '测试设备改名' });
+    assert.deepEqual(f.service.store.device(a.id).avatar, avatar);
+    const themes = [
+      'folks',
+      'adventurers',
+      'critters',
+      'oddlings',
+      'bots',
+      'snacks',
+      'nooks',
+      'orbs',
+    ];
+    const palettes = ['coast', 'orchid', 'clay', 'grove', 'sky', 'mono'];
+    for (const theme of themes)
+      for (const palette of palettes) {
+        assert.equal(
+          (await f.call('/api/device', a.token, { name: '测试设备', avatar: { theme, palette } }))
+            .status,
+          200,
+        );
+      }
+    await f.call('/api/device', a.token, { name: '测试设备', avatar });
+    const restored = new f.service.store.constructor(f.dir);
+    assert.deepEqual(restored.device(a.id).avatar, avatar);
+    restored.close();
+  } finally {
+    await f.close();
+  }
+});

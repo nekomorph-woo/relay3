@@ -1,3 +1,5 @@
+import { avatarStyle, nextAvatar, type AvatarStyle } from './avatar';
+import { AvatarRefresh } from './components/AvatarRefresh';
 import { StationTodos } from './components/StationTodos';
 import { stationTodos } from './todos';
 import { useStationNotifications } from './useStationNotifications';
@@ -436,6 +438,21 @@ export default function App() {
     receiveDir: '',
   });
   const [identityName, setIdentityName] = useState('');
+  const [mobileAvatar, setMobileAvatar] = useState<AvatarStyle>(() =>
+    avatarStyle(stored('relay3-device-avatar', null)),
+  );
+  const currentAvatar = avatarStyle(boot?.avatar ?? mobileAvatar);
+  async function refreshAvatar() {
+    const avatar = nextAvatar(currentAvatar);
+    if (desktop) {
+      const updated = await management('/settings', { avatar });
+      setAdmin(updated);
+      setBoot((b) => (b ? { ...b, avatar: updated.settings.avatar } : b));
+    } else {
+      save('relay3-device-avatar', avatar);
+      setMobileAvatar(avatar);
+    }
+  }
   async function saveDeviceName(name: string) {
     let value = name.trim();
     if (!value) throw new Error('请输入设备名称');
@@ -459,10 +476,23 @@ export default function App() {
   useEffect(() => {
     const name = boot?.deviceName ?? deviceName;
     for (const c of Object.values(multi.connections)) {
-      if (c.status === 'connected' && c.hub?.self.name !== name)
-        void request(c.session.base, c.session.token, '/api/device', { name }).catch(() => {});
+      if (
+        c.status === 'connected' &&
+        (c.hub?.self.name !== name ||
+          JSON.stringify(avatarStyle(c.hub?.self.avatar)) !== JSON.stringify(currentAvatar))
+      )
+        void request(c.session.base, c.session.token, '/api/device', {
+          name,
+          avatar: currentAvatar,
+        }).catch(() => {});
     }
-  }, [connectionIdentityKey, boot?.deviceName, deviceName]);
+  }, [
+    connectionIdentityKey,
+    boot?.deviceName,
+    deviceName,
+    currentAvatar.theme,
+    currentAvatar.palette,
+  ]);
   const [diagnosticState, setDiagnosticState] = useState<{
     path: string;
     crashPath: string;
@@ -809,6 +839,7 @@ export default function App() {
     const body = {
       id,
       name: boot?.deviceName ?? deviceName,
+      avatar: currentAvatar,
       ...(boot
         ? { platform: boot.platform, platformSource: 'native' }
         : {
@@ -1094,6 +1125,7 @@ export default function App() {
             <DeviceAvatar
               id={boot?.deviceId ?? mobileId.current}
               name={boot?.deviceName ?? deviceName}
+              avatar={currentAvatar}
             />
           </button>
           <div>
@@ -1858,7 +1890,7 @@ export default function App() {
                   >
                     {admin.devices.map((d) => (
                       <div className="device-record" key={d.id} data-scroll-id={d.id}>
-                        <DeviceAvatar id={d.id} name={d.name} size={40} />
+                        <DeviceAvatar id={d.id} name={d.name} avatar={d.avatar} size={40} />
                         <div>
                           <strong>
                             {d.name}
@@ -2481,7 +2513,13 @@ export default function App() {
           {page === 'settings' && !desktop && (
             <section className="panel mobile-device-settings">
               <h2>设备身份</h2>
-              <DeviceAvatar id={mobileId.current} name={identityName} size={48} />
+              <AvatarRefresh
+                id={mobileId.current}
+                name={identityName}
+                avatar={currentAvatar}
+                busy={busy}
+                onRefresh={() => void run(refreshAvatar)}
+              />
               <label>
                 设备名称
                 <input
@@ -2526,7 +2564,13 @@ export default function App() {
               void run(() => saveDeviceName(identityName));
             }}
           >
-            <DeviceAvatar id={boot?.deviceId ?? mobileId.current} name={identityName} size={64} />
+            <AvatarRefresh
+              id={boot?.deviceId ?? mobileId.current}
+              name={identityName}
+              avatar={currentAvatar}
+              busy={busy}
+              onRefresh={() => void run(refreshAvatar)}
+            />
             <label>
               设备名称
               <input

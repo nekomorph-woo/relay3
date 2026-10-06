@@ -1,3 +1,4 @@
+import type { AvatarStyle } from './avatar';
 import { reportException, setDiagnosticTarget } from './diagnostics';
 import type { Device, Transfer, SavedConnection } from '../server/store';
 export type { Device, Transfer };
@@ -14,6 +15,7 @@ export interface HubState {
   transfers: Transfer[];
 }
 export interface Bootstrap {
+  avatar?: AvatarStyle;
   controlUrl: string;
   adminToken: string;
   deviceId: string;
@@ -31,6 +33,7 @@ export interface AdminState {
   pairingCode: string;
   pairingCodeExpiresAt: number;
   settings: {
+    avatar?: AvatarStyle;
     stationId: string;
     deviceId: string;
     deviceName: string;

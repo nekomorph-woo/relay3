@@ -344,7 +344,7 @@ export class FileDelivery {
       if (b.chat && !packageId) {
         const result = db
           .prepare(
-            'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,fileId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,fileId,senderAvatar) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
           )
           .run(
             f.id,
@@ -359,6 +359,7 @@ export class FileDelivery {
             d.platform,
             'file',
             f.id,
+            d.avatar ? JSON.stringify(d.avatar) : null,
           );
         f.chatMessageId = Number(result.lastInsertRowid);
       }

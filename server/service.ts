@@ -1,3 +1,4 @@
+import { validAvatar } from '../src/avatar';
 import { ChatSearch } from './chatSearch';
 import { capacitySnapshot, assertCapacity } from './capacity';
 import { FileDelivery } from './files';
@@ -509,6 +510,7 @@ export class RelayService {
       const d: Device = {
         id: settings.deviceId,
         name: settings.deviceName,
+        avatar: settings.avatar,
         platform: process.platform === 'darwin' ? 'Mac' : 'PC',
         platformSource: 'native',
         firstSeen: previous?.firstSeen ?? Date.now(),
@@ -672,6 +674,10 @@ export class RelayService {
       let warning: string | undefined;
       const b = r.body as any;
       const s = { ...this.store.settings };
+      if (b.avatar !== undefined) {
+        if (!validAvatar(b.avatar)) fail('头像外观无效');
+        s.avatar = { theme: b.avatar.theme, palette: b.avatar.palette };
+      }
       for (const key of [
         'backgroundMode',
         'preventSleepTransfers',
@@ -772,6 +778,9 @@ export class RelayService {
         }
       }
       this.store.saveSettings(s);
+      const localDevice = this.store.device(s.deviceId);
+      if (localDevice)
+        this.store.saveDevice({ ...localDevice, name: s.deviceName, avatar: s.avatar });
       // Retention changes apply to completed caches as well.
       for (const t of this.store.transfers())
         if (!t.fileId && t.status === 'completed' && !t.cleanedAt && t.completedAt)
@@ -844,6 +853,7 @@ export class RelayService {
       const b = r.body as any;
       if (!b || typeof b.id !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(b.id))
         fail('设备标识无效');
+      if (b.avatar !== undefined && !validAvatar(b.avatar)) fail('头像外观无效');
       const previous = this.store.device(b.id);
       const authed = this.store.auth(digest(bearer(r)));
       const usingCode = typeof b.pairingCode === 'string';
@@ -887,6 +897,7 @@ export class RelayService {
       const d: Device = {
         id: b.id,
         name: cleanName(b.name).slice(0, 80),
+        avatar: b.avatar ?? previous?.avatar,
         platform,
         platformSource,
         firstSeen: previous?.firstSeen ?? Date.now(),
@@ -976,7 +987,9 @@ export class RelayService {
     });
     app.post('/api/device', async (r) => {
       const d = this.device(r);
-      const next = { ...d, name: cleanName((r.body as any)?.name).slice(0, 80) };
+      const b = r.body as any;
+      if (b?.avatar !== undefined && !validAvatar(b.avatar)) fail('头像外观无效');
+      const next = { ...d, name: cleanName(b?.name).slice(0, 80), avatar: b?.avatar ?? d.avatar };
       this.store.saveDevice(next);
       this.broadcast();
       return next;

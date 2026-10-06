@@ -1,3 +1,4 @@
+import type { AvatarStyle } from '../avatar';
 export interface ChatIdentity {
   privateKey: string;
   publicKey: string;
@@ -16,6 +17,7 @@ export interface Envelope {
   recipients: { id: string; publicKey: string; nonce: string; key: string }[];
 }
 export interface ChatMessage {
+  senderAvatar?: AvatarStyle;
   kind?: 'text' | 'file' | 'package';
   packageId?: string | null;
   fileId?: string | null;
@@ -32,6 +34,7 @@ export interface ChatMessage {
   remarkStyle: 'hint' | 'note' | 'clue';
 }
 export interface ChatDevice {
+  avatar?: AvatarStyle;
   id: string;
   name: string;
   platform: string;

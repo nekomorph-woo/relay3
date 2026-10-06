@@ -29,6 +29,8 @@ export class ChatStore {
       db.exec('ALTER TABLE chat_messages ADD COLUMN packageId TEXT');
     if (!columns.some((c) => c.name === 'senderPlatform'))
       db.exec('ALTER TABLE chat_messages ADD COLUMN senderPlatform TEXT');
+    if (!columns.some((c) => c.name === 'senderAvatar'))
+      db.exec('ALTER TABLE chat_messages ADD COLUMN senderAvatar TEXT');
     db.exec(
       `UPDATE chat_messages SET senderPlatform=(SELECT json_extract(data, '$.platform') FROM devices WHERE devices.id=chat_messages.senderId) WHERE senderPlatform IS NULL`,
     );
@@ -74,7 +76,11 @@ export class ChatStore {
     this.db.prepare('DELETE FROM chat_cursors WHERE deviceId=?').run(id);
   }
   read(row: any): ChatMessage {
-    return { ...row, envelope: row.envelope ? JSON.parse(row.envelope) : null };
+    return {
+      ...row,
+      senderAvatar: row.senderAvatar ? JSON.parse(row.senderAvatar) : undefined,
+      envelope: row.envelope ? JSON.parse(row.envelope) : null,
+    };
   }
   filter(filter: ChatFilter & { throughId?: number; all?: boolean }) {
     const terms: string[] = [],
@@ -309,7 +315,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
     }
     const inserted = chat.db
       .prepare(
-        'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,senderAvatar) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         b.clientId,
@@ -322,6 +328,7 @@ export function registerChat(app: FastifyInstance, service: RelayService, admin:
         remark,
         remarkStyle,
         d.platform,
+        d.avatar ? JSON.stringify(d.avatar) : null,
       );
     service.broadcast();
     return chat.read(

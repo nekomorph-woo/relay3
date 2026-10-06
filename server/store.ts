@@ -1,3 +1,4 @@
+import type { AvatarStyle } from '../src/avatar';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, statSync } from 'node:fs';
@@ -37,6 +38,7 @@ export type Status =
   | 'expired'
   | 'receive-expired';
 export interface Device {
+  avatar?: AvatarStyle;
   id: string;
   name: string;
   platform: string;
@@ -79,6 +81,7 @@ export interface Transfer {
   error: string | null;
 }
 export interface Settings {
+  avatar?: AvatarStyle;
   stationId: string;
   deviceId: string;
   deviceName: string;

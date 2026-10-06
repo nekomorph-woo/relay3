@@ -352,6 +352,7 @@ else {
         adminToken: service.adminToken,
         deviceId: service.store.settings.deviceId,
         deviceName: service.store.settings.deviceName,
+        avatar: service.store.settings.avatar,
         platform: process.platform === 'darwin' ? 'Mac' : 'PC',
         version: app.getVersion(),
         savedHubs: service.store.clientSessions(),

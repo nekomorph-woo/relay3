@@ -1,3 +1,4 @@
+import type { AvatarStyle } from '../src/avatar';
 import { assertCapacity } from './capacity';
 import type { FastifyInstance } from 'fastify';
 import type { RelayService } from './service';
@@ -22,7 +23,7 @@ export interface FilePackage {
   expiresAt: number | null;
   bufferMinutes: number;
   retentionHours: number;
-  recipients: { id: string; name: string; platform: string }[];
+  recipients: { id: string; name: string; platform: string; avatar?: AvatarStyle }[];
   chat: boolean;
   envelope?: Envelope;
   chatMessageId?: number;
@@ -205,7 +206,7 @@ export class FilePackages {
       });
       p.recipients = b.recipientIds.map((id: string) => {
         const recipient = this.service.store.device(id)!;
-        return { id, name: recipient.name, platform: recipient.platform };
+        return { id, name: recipient.name, platform: recipient.platform, avatar: recipient.avatar };
       });
       if (p.chat) {
         // 复用文件密文结构校验，不创建额外文件或消息。
@@ -255,7 +256,7 @@ export class FilePackages {
       if (p.chat) {
         const result = db
           .prepare(
-            'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,packageId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO chat_messages(clientId,senderId,senderName,createdAt,mode,content,envelope,remark,remarkStyle,senderPlatform,kind,packageId,senderAvatar) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
           )
           .run(
             p.id,
@@ -270,6 +271,9 @@ export class FilePackages {
             p.senderPlatform,
             'package',
             p.id,
+            this.service.store.device(p.senderId)?.avatar
+              ? JSON.stringify(this.service.store.device(p.senderId)!.avatar)
+              : null,
           );
         next.chatMessageId = Number(result.lastInsertRowid);
       }
