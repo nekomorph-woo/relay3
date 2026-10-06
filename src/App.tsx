@@ -1,3 +1,4 @@
+import { StationOnlineDevices } from './components/StationOnlineDevices';
 import { avatarStyle, nextAvatar, type AvatarStyle } from './avatar';
 import { AvatarRefresh } from './components/AvatarRefresh';
 import { StationTodos } from './components/StationTodos';
@@ -1732,7 +1733,7 @@ export default function App() {
                   </div>
                   <h2>{admin.running ? '中转站已开启' : '开启这台电脑的中转站'}</h2>
                   <strong className="station-name">{admin.settings.stationName}</strong>
-                  <p>让同一局域网的电脑和手机加入，互传文件与文字。</p>
+                  <p>同一局域网内，电脑与手机互传文件和文字。</p>
                   <div className="actions">
                     <Button
                       kind={admin.running ? '' : 'primary'}
@@ -1764,13 +1765,9 @@ export default function App() {
                       </Button>
                     )}
                   </div>
-                  <dl className="station-facts">
-                    <div>
-                      <dt>在线设备</dt>
-                      <dd>{admin.devices.filter((d) => d.online).length}</dd>
-                    </div>
-                  </dl>
+
                   <Button
+                    kind="station-settings-trigger"
                     onClick={() => {
                       setForm({
                         backgroundMode: false,
@@ -1784,6 +1781,7 @@ export default function App() {
                     <Settings size={17} />
                     中转站设置
                   </Button>
+                  <StationOnlineDevices devices={admin.devices} />
                 </div>
                 <div className="pairing-panel">
                   {admin.running ? (
