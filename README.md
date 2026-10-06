@@ -68,7 +68,7 @@ npm run dist:win              # Windows x64 NSIS 安装程序
 npm run pack                  # 本机应用目录
 ```
 
-产物位于 `release/`，只包含编译资源和运行依赖。使用 ASAR、最大压缩及中文 / 英文语言资源；SQLite 无需额外原生插件。构建流程见 [.github/workflows/build.yml](.github/workflows/build.yml)。
+产物位于 `release/`，只包含编译资源和运行依赖。使用 ASAR、最大压缩及中文 / 英文语言资源；SQLite 无需额外原生插件。通过上述命令在本地验证和打包。
 
 **数据与接口**：
 
