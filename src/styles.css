@@ -4887,18 +4887,9 @@ textarea {
   overflow-wrap: anywhere;
 }
 .station-settings {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-rule);
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-.station-settings h3 {
-  margin: 0;
-}
-.station-settings > .button {
-  align-self: flex-start;
 }
 .station-settings .form-grid {
   gap: 16px;

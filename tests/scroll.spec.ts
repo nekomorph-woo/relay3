@@ -213,7 +213,12 @@ test('小窗口发送与保存固定，路径弹窗正文滚动、Esc返回焦�
   await fixedWhileScrolling('.transfer-items', '.transfer-queue .section-head');
   await page.screenshot({ path: 'test-results/scroll-small-transfer.png' });
   await tab('本机中转站');
+  await page.getByRole('button', { name: '中转站设置', exact: true }).click();
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: '中转站设置', exact: true })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await expect(page.getByRole('status')).toContainText('设置已保存');
   await page.getByRole('button', { name: '诊断日志', exact: true }).click();
   await expect(page.getByRole('button', { name: '导出诊断日志' })).toBeVisible();

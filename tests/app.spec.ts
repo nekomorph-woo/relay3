@@ -191,8 +191,13 @@ test('断开历史保存，中转站与客户端可独立关闭，目录路径�
   await expect(desktop.locator('dialog')).toHaveCount(0);
   await expect(desktop.getByRole('heading', { name: '开启这台电脑的中转站' })).toBeVisible();
   await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
+  await desktop.getByRole('button', { name: '中转站设置', exact: true }).click();
   await desktop.getByRole('spinbutton', { name: '接收缓冲结束后保留时间（小时）' }).fill('2');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
+  await desktop
+    .getByRole('dialog', { name: '中转站设置', exact: true })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
   await desktop.getByRole('button', { name: '中转缓存', exact: true }).click();
   await desktop.getByText('缓存位置与数据库整理', { exact: true }).click();
@@ -394,8 +399,13 @@ test('独立中转站名称、历史实时探测、侧栏用户与关于介绍',
   await desktop.setViewportSize({ width: 1220, height: 840 });
   await desktop.getByRole('button', { name: '本机中转站', exact: true }).click();
   const device = (await desktop.evaluate(() => window.relay3!.bootstrap())).deviceName;
+  await desktop.getByRole('button', { name: '中转站设置', exact: true }).click();
   await desktop.getByLabel('中转站名称', { exact: true }).fill('客厅中转站');
   await desktop.getByRole('button', { name: '保存设置', exact: true }).click();
+  await desktop
+    .getByRole('dialog', { name: '中转站设置', exact: true })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await expect(desktop.getByRole('status')).toContainText('设置已保存');
   expect((await admin('/status')).settings.stationName).toBe('客厅中转站');
   expect((await admin('/status')).settings.deviceName).toBe(device);

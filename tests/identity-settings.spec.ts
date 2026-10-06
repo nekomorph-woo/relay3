@@ -44,9 +44,20 @@ test('设备弹窗更名更新统一头像，服务端设置独立保存并恢�
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(initial.deviceId);
     await dialog.getByRole('button', { name: '关闭', exact: true }).click();
     await page.getByRole('button', { name: '本机中转站', exact: true }).click();
+    await page.getByRole('button', { name: '中转站设置', exact: true }).click();
+    const settingsDialog = page.getByRole('dialog', { name: '中转站设置', exact: true });
+    await page.keyboard.press('Escape');
+    await page.mouse.click(2, 2);
+    await expect(settingsDialog).toBeVisible();
     await page.getByLabel('中转站名称', { exact: true }).fill('独立服务端名称');
     await page.getByRole('spinbutton', { name: '接收缓冲结束后保留时间（小时）' }).fill('3');
     await page.getByRole('button', { name: '保存设置', exact: true }).click();
+    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.getByRole('button', { name: '中转站设置', exact: true }).click();
+    await expect(settingsDialog.getByLabel('中转站名称', { exact: true })).toHaveValue(
+      '独立服务端名称',
+    );
+    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(page.locator('.station-name')).toHaveText('独立服务端名称');
     const settings = await page.evaluate(async () => {
       const b = await window.relay3!.bootstrap();

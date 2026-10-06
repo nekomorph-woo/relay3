@@ -314,6 +314,7 @@ export default function App() {
   const [modal, setModal] = useState<
     | null
     | 'identity'
+    | 'stationSettings'
     | 'diagnostics'
     | 'about'
     | 'connect'
@@ -1737,100 +1738,20 @@ export default function App() {
                       <dd>{admin.devices.filter((d) => d.online).length}</dd>
                     </div>
                   </dl>
-                  <form
-                    className="station-settings"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void run(async () => {
-                        const updated = await management('/settings', {
-                          stationName: form.stationName,
-                          port: form.port,
-                          retentionHours: form.retentionHours,
-                          backgroundMode: form.backgroundMode,
-                          preventSleepTransfers: form.preventSleepTransfers,
-                          preventSleepStation: form.preventSleepStation,
-                        });
-                        setAdmin(updated);
-                        inform(updated.warning ?? '设置已保存', !!updated.warning);
+                  <Button
+                    onClick={() => {
+                      setForm({
+                        backgroundMode: false,
+                        preventSleepTransfers: true,
+                        preventSleepStation: false,
+                        ...admin.settings,
                       });
+                      setModal('stationSettings');
                     }}
                   >
-                    <h3>中转站设置</h3>
-                    <label>
-                      中转站名称
-                      <input
-                        required
-                        maxLength={80}
-                        value={form.stationName}
-                        onChange={(e) => setForm({ ...form, stationName: e.target.value })}
-                      />
-                    </label>
-                    <div className="form-grid">
-                      <label>
-                        中转站端口
-                        <input
-                          type="number"
-                          required
-                          min={1024}
-                          max={65535}
-                          disabled={admin.running}
-                          value={form.port}
-                          onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
-                        />
-                        <small>关闭中转站后可修改</small>
-                      </label>
-                      <label>
-                        接收缓冲结束后保留时间（小时）
-                        <input
-                          type="number"
-                          required
-                          min={0.01}
-                          max={720}
-                          step="any"
-                          value={form.retentionHours}
-                          onChange={(e) =>
-                            setForm({ ...form, retentionHours: Number(e.target.value) })
-                          }
-                        />
-                      </label>
-                    </div>
-                    {desktop && (
-                      <fieldset className="runtime-settings">
-                        <legend>后台运行</legend>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={form.backgroundMode}
-                            onChange={(e) => setForm({ ...form, backgroundMode: e.target.checked })}
-                          />
-                          关闭窗口后继续运行（托盘 / 菜单栏）
-                        </label>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={form.preventSleepTransfers}
-                            onChange={(e) =>
-                              setForm({ ...form, preventSleepTransfers: e.target.checked })
-                            }
-                          />
-                          传输期间防止自动休眠
-                        </label>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={form.preventSleepStation}
-                            onChange={(e) =>
-                              setForm({ ...form, preventSleepStation: e.target.checked })
-                            }
-                          />
-                          中转站运行期间防止自动休眠
-                        </label>
-                      </fieldset>
-                    )}
-                    <Button type="submit" kind="primary" disabled={busy}>
-                      保存设置
-                    </Button>
-                  </form>
+                    <Settings size={17} />
+                    中转站设置
+                  </Button>
                 </div>
                 <div className="pairing-panel">
                   {admin.running ? (
@@ -2639,6 +2560,104 @@ export default function App() {
           </form>
         </Modal>
       )}
+      {modal === 'stationSettings' && admin && (
+        <Modal
+          title="中转站设置"
+          dismissible={false}
+          onClose={() => setModal(null)}
+          actions={
+            <Button type="submit" form="station-settings-form" kind="primary" disabled={busy}>
+              保存设置
+            </Button>
+          }
+        >
+          <form
+            id="station-settings-form"
+            className="station-settings"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                const updated = await management('/settings', {
+                  stationName: form.stationName,
+                  port: form.port,
+                  retentionHours: form.retentionHours,
+                  backgroundMode: form.backgroundMode,
+                  preventSleepTransfers: form.preventSleepTransfers,
+                  preventSleepStation: form.preventSleepStation,
+                });
+                setAdmin(updated);
+                inform(updated.warning ?? '设置已保存', !!updated.warning);
+              });
+            }}
+          >
+            <label>
+              中转站名称
+              <input
+                required
+                maxLength={80}
+                value={form.stationName}
+                onChange={(e) => setForm({ ...form, stationName: e.target.value })}
+              />
+            </label>
+            <div className="form-grid">
+              <label>
+                中转站端口
+                <input
+                  type="number"
+                  required
+                  min={1024}
+                  max={65535}
+                  disabled={admin.running}
+                  value={form.port}
+                  onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+                />
+                <small>关闭中转站后可修改</small>
+              </label>
+              <label>
+                接收缓冲结束后保留时间（小时）
+                <input
+                  type="number"
+                  required
+                  min={0.01}
+                  max={720}
+                  step="any"
+                  value={form.retentionHours}
+                  onChange={(e) => setForm({ ...form, retentionHours: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+            {desktop && (
+              <fieldset className="runtime-settings">
+                <legend>后台运行</legend>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={form.backgroundMode}
+                    onChange={(e) => setForm({ ...form, backgroundMode: e.target.checked })}
+                  />
+                  关闭窗口后继续运行（托盘 / 菜单栏）
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={form.preventSleepTransfers}
+                    onChange={(e) => setForm({ ...form, preventSleepTransfers: e.target.checked })}
+                  />
+                  传输期间防止自动休眠
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={form.preventSleepStation}
+                    onChange={(e) => setForm({ ...form, preventSleepStation: e.target.checked })}
+                  />
+                  中转站运行期间防止自动休眠
+                </label>
+              </fieldset>
+            )}
+          </form>
+        </Modal>
+      )}
       {modal === 'diagnostics' && desktop && (
         <Modal title="诊断日志" dismissible={false} onClose={() => setModal(null)}>
           <div className="diagnostic-panel">
@@ -3026,6 +3045,7 @@ export default function App() {
         </Modal>
       )}
       {modal &&
+        modal !== 'stationSettings' &&
         modal !== 'identity' &&
         modal !== 'diagnostics' &&
         modal !== 'storageLocations' &&
