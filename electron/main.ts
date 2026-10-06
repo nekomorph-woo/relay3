@@ -663,7 +663,9 @@ else {
         updateRuntime();
       });
       app.on('activate', () => {
-        if (!window) void createWindow();
+        if (quitting) return;
+        if (window) showWindow();
+        else void createWindow();
       });
     })
     .catch((err) => {

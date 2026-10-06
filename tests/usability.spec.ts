@@ -98,7 +98,24 @@ test('连接报告、文件夹ZIP双端接收、SQLite搜索、后台隐藏窗�
     ).toBe(false);
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
     expect((await (await phone.request.get(base + '/api/info')).json()).running).toBe(true);
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show());
+    const contentsId = await app.evaluate(
+      ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.id,
+    );
+    // Dock 点击会发出 activate；恢复同一窗口，避免重建页面断开连接。
+    await app.evaluate(({ app }) => app.emit('activate'));
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+      .toBe(true);
+    expect(
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.id),
+    ).toBe(contentsId);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].minimize());
+    await app.evaluate(({ app }) => app.emit('activate'));
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized()),
+      )
+      .toBe(false);
     await admin('/settings', { backgroundMode: false });
     await desktop.getByRole('button', { name: '文件传输', exact: true }).click();
     await desktop.locator('.package-summary').first().click();
